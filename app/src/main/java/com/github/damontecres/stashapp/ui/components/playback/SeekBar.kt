@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import com.github.damontecres.stashapp.ui.util.handleDPadKeyEvents
+import android.view.KeyEvent
 
 @Composable
 fun SeekBarImpl(
@@ -72,6 +73,7 @@ fun SeekBarImpl(
 
     val handleSeekEventModifier =
         Modifier.handleDPadKeyEvents(
+            triggerOnAction = KeyEvent.ACTION_DOWN, // Use ACTION_DOWN for continuous seeking
             onCenter = {
                 controllerViewState.pulseControls()
                 onSeek(seekProgress)

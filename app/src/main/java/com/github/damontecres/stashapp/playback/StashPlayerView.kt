@@ -64,7 +64,8 @@ class StashPlayerView(
             !fragment.isControllerVisible &&
             (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT || keyCode == KeyEvent.KEYCODE_DPAD_LEFT)
         ) {
-            if (event.action == KeyEvent.ACTION_UP) {
+            // Handle left/right keys on ACTION_DOWN for continuous seeking
+            if (event.action == KeyEvent.ACTION_DOWN) {
                 if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
                     if (dPadSkipEnabled) {
                         player!!.seekForward()

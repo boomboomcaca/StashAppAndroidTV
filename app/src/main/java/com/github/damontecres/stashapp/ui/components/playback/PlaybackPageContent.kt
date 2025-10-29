@@ -1025,65 +1025,93 @@ class PlaybackKeyHandler(
         var result = true
         if (!controlsEnabled) {
             result = false
-        } else if (it.type != KeyEventType.KeyUp) {
-            result = false
         } else if (isDpad(it)) {
             if (!controllerViewState.controlsVisible) {
-                if (skipWithLeftRight && it.key == Key.DirectionLeft) {
-                    updateSkipIndicator(-player.seekBackIncrement)
-                    player.seekBack()
-                } else if (skipWithLeftRight && it.key == Key.DirectionRight) {
-                    player.seekForward()
-                    updateSkipIndicator(player.seekForwardIncrement)
-                } else if (nextWithUpDown && it.key == Key.DirectionUp) {
-                    player.seekToPreviousMediaItem()
-                } else if (nextWithUpDown && it.key == Key.DirectionDown) {
-                    player.seekToNextMediaItem()
-                } else {
-                    controllerViewState.showControls()
-                }
-            } else {
-                // When controller is visible, its buttons will handle pulsing
-            }
-        } else if (isMedia(it)) {
-            when (it.key) {
-                Key.MediaPlay -> {
-                    Util.handlePlayButtonAction(player)
-                }
-
-                Key.MediaPause -> {
-                    Util.handlePauseButtonAction(player)
-                    controllerViewState.showControls()
-                }
-
-                Key.MediaPlayPause -> {
-                    Util.handlePlayPauseButtonAction(player)
-                    if (!player.isPlaying) {
-                        controllerViewState.showControls()
+                // Handle left/right keys on KeyDown for continuous seeking
+                if (it.type == KeyEventType.KeyDown) {
+                    if (skipWithLeftRight && it.key == Key.DirectionLeft) {
+                        updateSkipIndicator(-player.seekBackIncrement)
+                        player.seekBack()
+                        return true
+                    } else if (skipWithLeftRight && it.key == Key.DirectionRight) {
+                        player.seekForward()
+                        updateSkipIndicator(player.seekForwardIncrement)
+                        return true
                     }
                 }
-
-                Key.MediaFastForward, Key.MediaSkipForward -> {
-                    player.seekForward()
-                    updateSkipIndicator(player.seekForwardIncrement)
+                // Handle up/down keys on KeyUp for media navigation
+                if (it.type == KeyEventType.KeyUp) {
+                    if (nextWithUpDown && it.key == Key.DirectionUp) {
+                        player.seekToPreviousMediaItem()
+                        return true
+                    } else if (nextWithUpDown && it.key == Key.DirectionDown) {
+                        player.seekToNextMediaItem()
+                        return true
+                    } else if (it.key == Key.DirectionUp || it.key == Key.DirectionDown) {
+                        // Only show controls for up/down keys, not left/right keys
+                        controllerViewState.showControls()
+                        return true
+                    }
+                    // For left/right keys on KeyUp, do nothing (don't show controls)
+                    return true
                 }
+            } else {
+                // When controller is visible, let the control bar handle navigation
+                // Don't consume the event, let it propagate to control bar components
+                result = false
+            }
+        } else if (isMedia(it)) {
+            // Media keys should only trigger on KeyUp to avoid multiple triggers
+            if (it.type == KeyEventType.KeyUp) {
+                when (it.key) {
+                    Key.MediaPlay -> {
+                        Util.handlePlayButtonAction(player)
+                    }
 
-                Key.MediaRewind, Key.MediaSkipBackward -> {
-                    player.seekBack()
-                    updateSkipIndicator(-player.seekBackIncrement)
+                    Key.MediaPause -> {
+                        Util.handlePauseButtonAction(player)
+                        controllerViewState.showControls()
+                    }
+
+                    Key.MediaPlayPause -> {
+                        Util.handlePlayPauseButtonAction(player)
+                        if (!player.isPlaying) {
+                            controllerViewState.showControls()
+                        }
+                    }
+
+                    Key.MediaFastForward, Key.MediaSkipForward -> {
+                        player.seekForward()
+                        updateSkipIndicator(player.seekForwardIncrement)
+                    }
+
+                    Key.MediaRewind, Key.MediaSkipBackward -> {
+                        player.seekBack()
+                        updateSkipIndicator(-player.seekBackIncrement)
+                    }
+
+                    Key.MediaNext -> if (player.isCommandAvailable(Player.COMMAND_SEEK_TO_NEXT)) player.seekToNext()
+                    Key.MediaPrevious -> if (player.isCommandAvailable(Player.COMMAND_SEEK_TO_PREVIOUS)) player.seekToPrevious()
+                    else -> result = false
                 }
-
-                Key.MediaNext -> if (player.isCommandAvailable(Player.COMMAND_SEEK_TO_NEXT)) player.seekToNext()
-                Key.MediaPrevious -> if (player.isCommandAvailable(Player.COMMAND_SEEK_TO_PREVIOUS)) player.seekToPrevious()
-                else -> result = false
+            } else {
+                result = false
             }
         } else if (it.key == Key.Enter && !controllerViewState.controlsVisible) {
-            controllerViewState.showControls()
+            if (it.type == KeyEventType.KeyUp) {
+                controllerViewState.showControls()
+            } else {
+                result = false
+            }
         } else if (it.key == Key.Back && controllerViewState.controlsVisible) {
-            // TODO change this to a BackHandler?
-            controllerViewState.hideControls()
-            if (!isTvDevice) {
-                // Allow to propagate up
+            if (it.type == KeyEventType.KeyUp) {
+                // TODO change this to a BackHandler?
+                controllerViewState.hideControls()
+                if (!isTvDevice) {
+                    // Allow to propagate up
+                    result = false
+                }
+            } else {
                 result = false
             }
         } else {
