@@ -73,6 +73,12 @@ android {
         vectorDrawables.useSupportLibrary = true
     }
     signingConfigs {
+        create("debugRelease") {
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+            storeFile = file("../debug.keystore")
+            storePassword = "android"
+        }
         if (shouldSign) {
             create("ci") {
                 file("ci.keystore").writeBytes(
@@ -100,15 +106,8 @@ android {
             if (shouldSign) {
                 signingConfig = signingConfigs.getByName("ci")
             } else {
-                val localPropertiesFile = project.rootProject.file("local.properties")
-                if (localPropertiesFile.exists()) {
-                    val properties = Properties()
-                    properties.load(localPropertiesFile.inputStream())
-                    val signingConfigName = properties["release.signing.config"]?.toString()
-                    if (signingConfigName != null) {
-                        signingConfig = signingConfigs.getByName(signingConfigName)
-                    }
-                }
+                // Use debug signing for release to match existing installation
+                signingConfig = signingConfigs.getByName("debugRelease")
             }
         }
         debug {
