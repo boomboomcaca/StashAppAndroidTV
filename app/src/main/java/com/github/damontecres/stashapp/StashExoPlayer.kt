@@ -3,6 +3,7 @@ package com.github.damontecres.stashapp
 import android.content.Context
 import android.util.Log
 import androidx.annotation.OptIn
+import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.util.UnstableApi
@@ -148,7 +149,10 @@ class StashExoPlayer private constructor() {
                             .Builder()
                             .setAudioOffloadMode(TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_ENABLED)
                             .build(),
-                    ).build()
+                    )
+                    // Always disable native text tracks (captions) - only use enhanced subtitles
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                    .build()
             val extractorsFactory =
                 DefaultExtractorsFactory().apply {
                     setTsExtractorTimestampSearchBytes(TsExtractor.DEFAULT_TIMESTAMP_SEARCH_BYTES * 3)

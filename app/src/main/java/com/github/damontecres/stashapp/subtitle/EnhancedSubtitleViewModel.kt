@@ -1,0 +1,397 @@
+package com.github.damontecres.stashapp.subtitle
+
+import android.app.Application
+import android.content.SharedPreferences
+import android.util.Log
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.apollographql.apollo.ApolloClient
+import com.github.damontecres.stashapp.util.StashClient
+import com.github.damontecres.stashapp.util.StashServer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/**
+ * ViewModel for enhanced subtitle functionality
+ */
+class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(application) {
+    private val context = getApplication<Application>()
+    
+    private var apolloClient: ApolloClient? = null
+    private var dictionaryService: DictionaryService? = null
+    private var pronunciationService: PronunciationService? = null
+    private var favoritesService: FavoritesService? = null
+    private var apiKey: String? = null
+    
+    // Subtitle state
+    private val _subtitles = MutableStateFlow<List<SubtitleCue>>(emptyList())
+    val subtitles: StateFlow<List<SubtitleCue>> = _subtitles.asStateFlow()
+    
+    private val _currentCue = MutableStateFlow<SubtitleCue?>(null)
+    val currentCue: StateFlow<SubtitleCue?> = _currentCue.asStateFlow()
+    
+    // Loading and error state
+    private val _isLoadingSubtitles = MutableStateFlow(false)
+    val isLoadingSubtitles: StateFlow<Boolean> = _isLoadingSubtitles.asStateFlow()
+    
+    private val _subtitleLoadError = MutableStateFlow<String?>(null)
+    val subtitleLoadError: StateFlow<String?> = _subtitleLoadError.asStateFlow()
+    
+    private val _currentSubtitleUrl = MutableStateFlow<String?>(null)
+    val currentSubtitleUrl: StateFlow<String?> = _currentSubtitleUrl.asStateFlow()
+    
+    private val _wordSegments = MutableStateFlow<List<WordSegment>>(emptyList())
+    val wordSegments: StateFlow<List<WordSegment>> = _wordSegments.asStateFlow()
+    
+    private val _detectedLanguage = MutableStateFlow<String>("en")
+    val detectedLanguage: StateFlow<String> = _detectedLanguage.asStateFlow()
+    
+    // Dictionary state
+    private val _selectedWord = MutableStateFlow<String?>(null)
+    val selectedWord: StateFlow<String?> = _selectedWord.asStateFlow()
+    
+    private val _dictionaryEntry = MutableStateFlow<DictionaryEntry?>(null)
+    val dictionaryEntry: StateFlow<DictionaryEntry?> = _dictionaryEntry.asStateFlow()
+    
+    private val _isLoadingDictionary = MutableStateFlow(false)
+    val isLoadingDictionary: StateFlow<Boolean> = _isLoadingDictionary.asStateFlow()
+    
+    // UI state
+    private val _isVisible = MutableStateFlow(false)
+    val isVisible: StateFlow<Boolean> = _isVisible.asStateFlow()
+    
+    private val _fontSize = MutableStateFlow(1.0f)
+    val fontSize: StateFlow<Float> = _fontSize.asStateFlow()
+    
+    private val _subtitlePosition = MutableStateFlow(0f)
+    val subtitlePosition: StateFlow<Float> = _subtitlePosition.asStateFlow()
+    
+    private val _autoPauseEnabled = MutableStateFlow(false)
+    val autoPauseEnabled: StateFlow<Boolean> = _autoPauseEnabled.asStateFlow()
+    
+    // Track if currently auto-paused
+    private val _isAutoPaused = MutableStateFlow(false)
+    val isAutoPaused: StateFlow<Boolean> = _isAutoPaused.asStateFlow()
+    
+    // Word navigation state
+    private val _selectedWordIndex = MutableStateFlow(-1)
+    val selectedWordIndex: StateFlow<Int> = _selectedWordIndex.asStateFlow()
+    
+    private val _isInWordNavigationMode = MutableStateFlow(false)
+    val isInWordNavigationMode: StateFlow<Boolean> = _isInWordNavigationMode.asStateFlow()
+    
+    private var segmenter: WordSegmenter? = null
+    private var subtitleCache = mutableMapOf<String, List<SubtitleCue>>()
+    
+    private val prefs: SharedPreferences = context.getSharedPreferences(
+        "enhanced_subtitles",
+        android.content.Context.MODE_PRIVATE
+    )
+    
+    init {
+        loadPreferences()
+        initializeServices()
+    }
+    
+    private fun initializeServices() {
+        pronunciationService = PronunciationService.getInstance(context)
+        favoritesService = FavoritesService(context)
+    }
+    
+    fun setServer(server: StashServer?) {
+        viewModelScope.launch {
+            apiKey = server?.apiKey
+            apolloClient = try {
+                server?.apolloClient
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to get apollo client", e)
+                null
+            }
+            dictionaryService = DictionaryService(apolloClient)
+        }
+    }
+    
+    private fun loadPreferences() {
+        _fontSize.value = prefs.getFloat("fontSize", 1.0f)
+        _subtitlePosition.value = prefs.getFloat("position", 0f)
+        _autoPauseEnabled.value = prefs.getBoolean("autoPause", false)
+    }
+    
+    private fun savePreferences() {
+        prefs.edit()
+            .putFloat("fontSize", _fontSize.value)
+            .putFloat("position", _subtitlePosition.value)
+            .putBoolean("autoPause", _autoPauseEnabled.value)
+            .apply()
+    }
+    
+    /**
+     * Load subtitles from VTT/SRT URL
+     */
+    fun loadSubtitles(vttUrl: String?) {
+        _currentSubtitleUrl.value = vttUrl
+        
+        if (vttUrl == null) {
+            _subtitles.value = emptyList()
+            _currentCue.value = null
+            _isLoadingSubtitles.value = false
+            _subtitleLoadError.value = "未找到字幕文件"
+            return
+        }
+        
+        _isLoadingSubtitles.value = true
+        _subtitleLoadError.value = null
+        
+        viewModelScope.launch {
+            // Check cache
+            subtitleCache[vttUrl]?.let {
+                _subtitles.value = it
+                _isLoadingSubtitles.value = false
+                return@launch
+            }
+            
+            VttParser.loadVttFromUrl(vttUrl, apiKey).fold(
+                onSuccess = { cues ->
+                    subtitleCache[vttUrl] = cues
+                    _subtitles.value = cues
+                    _isLoadingSubtitles.value = false
+                    _subtitleLoadError.value = null
+                },
+                onFailure = { error ->
+                    _subtitles.value = emptyList()
+                    _isLoadingSubtitles.value = false
+                    _subtitleLoadError.value = "加载字幕失败: ${error.message}"
+                }
+            )
+        }
+    }
+    
+    /**
+     * Update current playback time and find corresponding cue
+     */
+    fun updatePlaybackTime(currentTimeSeconds: Double) {
+        val cues = _subtitles.value
+        if (cues.isEmpty()) {
+            _currentCue.value = null
+            return
+        }
+        
+        val cue = VttParser.getCurrentCue(cues, currentTimeSeconds)
+        
+        if (cue != _currentCue.value) {
+            _currentCue.value = cue
+            // Reset auto-paused state when cue changes
+            _isAutoPaused.value = false
+            
+            // Segment the text when cue changes
+            cue?.let { segmentCueText(it) }
+        }
+    }
+    
+    private fun segmentCueText(cue: SubtitleCue) {
+        val detected = WordSegmenter.detectLanguage(cue.text)
+        if (detected != _detectedLanguage.value) {
+            _detectedLanguage.value = detected
+            segmenter = WordSegmenter.create(detected)
+        }
+        
+        val currentSegmenter = segmenter ?: WordSegmenter.create(_detectedLanguage.value)
+        val segments = currentSegmenter.segmentText(cue.text)
+        
+        _wordSegments.value = segments
+        _selectedWordIndex.value = -1
+    }
+    
+    /**
+     * Handle word click/selection
+     */
+    fun selectWord(word: String?) {
+        viewModelScope.launch {
+            _selectedWord.value = word
+            if (word == null) {
+                _dictionaryEntry.value = null
+                _isLoadingDictionary.value = false
+                return@launch
+            }
+            
+            _isLoadingDictionary.value = true
+            
+            val context = _currentCue.value?.text ?: ""
+            val language = _detectedLanguage.value
+            
+            val entry = dictionaryService?.lookup(word, language, context)
+            _dictionaryEntry.value = entry
+            _isLoadingDictionary.value = false
+        }
+    }
+    
+    /**
+     * Play pronunciation for selected word
+     */
+    fun playPronunciation(word: String?) {
+        if (word == null) return
+        
+        viewModelScope.launch {
+            pronunciationService?.playPronunciation(word, _detectedLanguage.value)
+                ?.onFailure { error ->
+                    Log.e(TAG, "Failed to play pronunciation", error)
+                }
+        }
+    }
+    
+    /**
+     * Toggle favorite for selected word
+     */
+    fun toggleFavorite(word: String?) {
+        if (word == null) return
+        
+        viewModelScope.launch {
+            val language = _detectedLanguage.value
+            val isFavorite = favoritesService?.isFavorite(word, language) ?: false
+            
+            if (isFavorite) {
+                favoritesService?.removeFavorite(word, language)
+            } else {
+                favoritesService?.addFavorite(word, language)
+            }
+        }
+    }
+    
+    fun isFavorite(word: String): Boolean {
+        return favoritesService?.isFavorite(word, _detectedLanguage.value) ?: false
+    }
+    
+    /**
+     * Toggle visibility
+     */
+    fun toggleVisibility() {
+        _isVisible.value = !_isVisible.value
+    }
+    
+    fun setVisible(visible: Boolean) {
+        _isVisible.value = visible
+    }
+    
+    /**
+     * Adjust font size
+     */
+    fun adjustFontSize(delta: Float) {
+        val newSize = (_fontSize.value + delta).coerceIn(0.5f, 3.0f)
+        _fontSize.value = newSize
+        savePreferences()
+    }
+    
+    fun setFontSize(size: Float) {
+        _fontSize.value = size.coerceIn(0.5f, 3.0f)
+        savePreferences()
+    }
+    
+    /**
+     * Adjust subtitle position
+     */
+    fun adjustPosition(delta: Float) {
+        _subtitlePosition.value = (_subtitlePosition.value + delta).coerceIn(-1f, 1f)
+        savePreferences()
+    }
+    
+    /**
+     * Toggle auto-pause
+     */
+    fun toggleAutoPause() {
+        _autoPauseEnabled.value = !_autoPauseEnabled.value
+        if (!_autoPauseEnabled.value) {
+            // When disabling auto-pause, reset the paused state
+            _isAutoPaused.value = false
+        }
+        savePreferences()
+    }
+    
+    /**
+     * Word navigation mode
+     */
+    fun enterWordNavigationMode() {
+        if (_wordSegments.value.isNotEmpty()) {
+            _isInWordNavigationMode.value = true
+            _selectedWordIndex.value = 0
+        }
+    }
+    
+    fun exitWordNavigationMode() {
+        _isInWordNavigationMode.value = false
+        _selectedWordIndex.value = -1
+    }
+    
+    fun navigateToNextWord() {
+        val segments = _wordSegments.value
+        if (_selectedWordIndex.value < segments.size - 1) {
+            _selectedWordIndex.value = _selectedWordIndex.value + 1
+        }
+    }
+    
+    fun navigateToPreviousWord() {
+        if (_selectedWordIndex.value > 0) {
+            _selectedWordIndex.value = _selectedWordIndex.value - 1
+        }
+    }
+    
+    fun selectCurrentWord() {
+        val segments = _wordSegments.value
+        val index = _selectedWordIndex.value
+        if (index >= 0 && index < segments.size) {
+            selectWord(segments[index].word)
+        }
+    }
+    
+    /**
+     * Check if auto-pause should trigger (returns true if should pause)
+     */
+    fun checkAutoPause(currentTimeSeconds: Double): Boolean {
+        if (!_autoPauseEnabled.value) {
+            _isAutoPaused.value = false
+            return false
+        }
+        
+        val cue = _currentCue.value ?: run {
+            _isAutoPaused.value = false
+            return false
+        }
+        val timeUntilEnd = cue.endTime - currentTimeSeconds
+        
+        // If time has passed the pause threshold or subtitle end, reset paused state
+        // This handles the case when user resumes playback after auto-pause
+        if (timeUntilEnd <= 0 || currentTimeSeconds >= cue.endTime) {
+            _isAutoPaused.value = false
+            return false
+        }
+        
+        // Pause 0.3 seconds before subtitle ends
+        val shouldPause = timeUntilEnd <= 0.3 && timeUntilEnd > 0
+        
+        // Update paused state
+        if (shouldPause) {
+            // Set to paused state when in pause zone
+            if (!_isAutoPaused.value) {
+                _isAutoPaused.value = true
+            }
+        } else {
+            // Reset to playing state when not in pause zone
+            _isAutoPaused.value = false
+        }
+        
+        return shouldPause
+    }
+    
+    override fun onCleared() {
+        super.onCleared()
+        pronunciationService?.shutdown()
+    }
+    
+    companion object {
+        private const val TAG = "EnhancedSubtitleVM"
+    }
+}
+

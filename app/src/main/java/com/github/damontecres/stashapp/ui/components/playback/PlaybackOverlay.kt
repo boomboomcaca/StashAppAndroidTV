@@ -163,6 +163,8 @@ fun PlaybackOverlay(
     playlistInfo: PlaylistInfo?,
     videoDecoder: String?,
     audioDecoder: String?,
+    enhancedSubtitlesEnabled: Boolean = false,
+    autoPauseEnabled: Boolean = false,
     modifier: Modifier = Modifier,
     seekPreviewPlaceholder: Painter? = null,
     seekBarInteractionSource: MutableInteractionSource = remember { MutableInteractionSource() },
@@ -314,6 +316,8 @@ fun PlaybackOverlay(
                     onPlaybackActionClick = onPlaybackActionClick,
                     controllerViewState = controllerViewState,
                     showDebugInfo = showDebugInfo,
+                    enhancedSubtitlesEnabled = enhancedSubtitlesEnabled,
+                    autoPauseEnabled = autoPauseEnabled,
                     onSeekProgress = {
                         seekProgress = it
                         onSeekBarChange(it)

@@ -48,6 +48,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -92,6 +93,10 @@ sealed interface PlaybackAction {
         val index: Int,
     ) : PlaybackAction
 
+    data object ToggleEnhancedSubtitles : PlaybackAction
+
+    data object ToggleAutoPause : PlaybackAction
+
     data class ToggleAudio(
         val index: Int,
     ) : PlaybackAction
@@ -127,6 +132,8 @@ fun PlaybackControls(
     playbackSpeed: Float,
     scale: ContentScale,
     seekBarIntervals: Int,
+    enhancedSubtitlesEnabled: Boolean = false,
+    autoPauseEnabled: Boolean = false,
     modifier: Modifier = Modifier,
     initialFocusRequester: FocusRequester = remember { FocusRequester() },
     seekBarInteractionSource: MutableInteractionSource = remember { MutableInteractionSource() },
@@ -204,6 +211,8 @@ fun PlaybackControls(
                 audioIndex = audioIndex,
                 playbackSpeed = playbackSpeed,
                 scale = scale,
+                enhancedSubtitlesEnabled = enhancedSubtitlesEnabled,
+                autoPauseEnabled = autoPauseEnabled,
             )
         }
     }
@@ -375,9 +384,10 @@ fun RightPlaybackButtons(
     audioIndex: Int?,
     playbackSpeed: Float,
     scale: ContentScale,
+    enhancedSubtitlesEnabled: Boolean = false,
+    autoPauseEnabled: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    var showCaptionDialog by remember { mutableStateOf(false) }
     var showOptionsDialog by remember { mutableStateOf(false) }
     var showAudioDialog by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
@@ -386,16 +396,27 @@ fun RightPlaybackButtons(
         modifier = modifier.focusGroup(),
         horizontalArrangement = Arrangement.spacedBy(buttonSpacing),
     ) {
-        // Captions
+        // Enhanced Subtitles button (only enhanced subtitles, no native captions)
         PlaybackButton(
-            enabled = captions.isNotEmpty(),
+            enabled = true,
             iconRes = R.drawable.captions_svgrepo_com,
             onClick = {
-                onControllerInteractionForDialog.invoke()
-                showCaptionDialog = true
+                onPlaybackActionClick.invoke(PlaybackAction.ToggleEnhancedSubtitles)
             },
             onControllerInteraction = onControllerInteraction,
+            isSelected = enhancedSubtitlesEnabled,
         )
+        // Auto Pause (AP) button - only show when enhanced subtitles are enabled
+        if (enhancedSubtitlesEnabled) {
+            AutoPauseButton(
+                enabled = true,
+                onClick = {
+                    onPlaybackActionClick.invoke(PlaybackAction.ToggleAutoPause)
+                },
+                onControllerInteraction = onControllerInteraction,
+                isSelected = autoPauseEnabled,
+            )
+        }
         // Playback speed, etc
         PlaybackButton(
             iconRes = R.drawable.vector_settings,
@@ -407,23 +428,7 @@ fun RightPlaybackButtons(
             onControllerInteraction = onControllerInteraction,
         )
     }
-    if (showCaptionDialog) {
-        val context = LocalContext.current
-        val options = captions.map { it.displayString(context) }
-        Log.v(TAG, "subtitleIndex=$subtitleIndex, options=$options")
-        BottomDialog(
-            choices = options,
-            currentChoice = subtitleIndex,
-            onDismissRequest = {
-                onControllerInteraction.invoke()
-                showCaptionDialog = false
-            },
-            onSelectChoice = { index, _ ->
-                onPlaybackActionClick.invoke(PlaybackAction.ToggleCaptions(index))
-            },
-            gravity = Gravity.END,
-        )
-    }
+    // Removed caption dialog - only enhanced subtitles are available
     if (showOptionsDialog) {
         val options = listOf("Audio Track", "Playback Speed", "Video Scale")
         BottomDialog(
@@ -555,16 +560,17 @@ fun PlaybackButton(
     onControllerInteraction: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    isSelected: Boolean = false,
 ) {
-    val selectedColor = MaterialTheme.colorScheme.border
+    val selectedColor = MaterialTheme.colorScheme.primary
     Button(
         enabled = enabled,
         onClick = onClick,
         shape = ButtonDefaults.shape(CircleShape),
         colors =
             ButtonDefaults.colors(
-                containerColor = AppColors.TransparentBlack25,
-                focusedContainerColor = selectedColor,
+                containerColor = if (isSelected) selectedColor.copy(alpha = 0.3f) else AppColors.TransparentBlack25,
+                focusedContainerColor = if (isSelected) selectedColor else MaterialTheme.colorScheme.border,
             ),
         contentPadding = PaddingValues(8.dp),
         modifier =
@@ -577,7 +583,41 @@ fun PlaybackButton(
             modifier = Modifier.fillMaxSize(),
             painter = painterResource(iconRes),
             contentDescription = "",
-            tint = MaterialTheme.colorScheme.onSurface,
+            tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+@Composable
+private fun AutoPauseButton(
+    onClick: () -> Unit,
+    onControllerInteraction: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    isSelected: Boolean = false,
+) {
+    val selectedColor = MaterialTheme.colorScheme.primary
+    Button(
+        enabled = enabled,
+        onClick = onClick,
+        shape = ButtonDefaults.shape(CircleShape),
+        colors =
+            ButtonDefaults.colors(
+                containerColor = if (isSelected) selectedColor.copy(alpha = 0.3f) else AppColors.TransparentBlack25,
+                focusedContainerColor = if (isSelected) selectedColor else MaterialTheme.colorScheme.border,
+            ),
+        contentPadding = PaddingValues(8.dp),
+        modifier =
+            modifier
+                .padding(8.dp)
+                .size(56.dp, 56.dp)
+                .onFocusChanged { onControllerInteraction.invoke() },
+    ) {
+        Text(
+            text = "AP",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
         )
     }
 }

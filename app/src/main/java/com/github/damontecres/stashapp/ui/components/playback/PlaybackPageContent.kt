@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableFloatStateOf
@@ -407,6 +408,16 @@ fun PlaybackPageContent(
     var audioOptions by remember { mutableStateOf<List<String>>(listOf()) }
     var showFilterDialog by rememberSaveable { mutableStateOf(false) }
     val videoFilter by viewModel.videoFilter.observeAsState()
+    
+    // Enhanced Subtitle state
+    var enhancedSubtitlesEnabled by rememberSaveable { mutableStateOf(false) }
+    val enhancedSubtitleViewModel: com.github.damontecres.stashapp.subtitle.EnhancedSubtitleViewModel = viewModel()
+    val autoPauseEnabled by enhancedSubtitleViewModel.autoPauseEnabled.collectAsState()
+    
+    // Initialize server for enhanced subtitle ViewModel
+    LaunchedEffect(server) {
+        enhancedSubtitleViewModel.setServer(server)
+    }
 
     var showSceneDetails by rememberSaveable { mutableStateOf(false) }
     val scene by viewModel.scene.observeAsState()
@@ -526,23 +537,11 @@ fun PlaybackPageContent(
                     audioIndex = audioTracks.indexOfFirstOrNull { it.selected }
                     audioOptions =
                         audioTracks.map { it.labels.joinToString(", ").ifBlank { "Default" } }
-                    captions =
-                        trackInfo.filter { it.type == TrackType.TEXT && it.supported == TrackSupportReason.HANDLED }
-
-                    val captionsByDefault =
-                        uiConfig.preferences.interfacePreferences.captionsByDefault
-                    if (captionsByDefault && captions.isNotEmpty() && mediaIndexSubtitlesActivated != currentPlaylistIndex) {
-                        // Captions will be empty when transitioning to new media item
-                        // Only want to activate subtitles once in case the user turns them off
-                        mediaIndexSubtitlesActivated = currentPlaylistIndex
-                        val languageCode = Locale.getDefault().language
-                        captions.indexOfFirstOrNull { it.format.language == languageCode }?.let {
-                            Log.v(TAG, "Found default subtitle track for $languageCode: $it")
-                            if (toggleSubtitles(player, null, it)) {
-                                subtitleIndex = it
-                            }
-                        }
-                    }
+                    // Native captions are always disabled - only enhanced subtitles are available
+                    captions = emptyList()
+                    
+                    // Disable native captions by default (captionsByDefault setting is ignored)
+                    // Native captions are permanently disabled to use only enhanced subtitles
                 }
 
                 override fun onMediaItemTransition(
@@ -749,7 +748,9 @@ fun PlaybackPageContent(
             }
         }
 
-        if (!controllerViewState.controlsVisible && subtitleIndex != null && skipIndicatorDuration == 0L) {
+        // Native subtitles are always disabled - only enhanced subtitles are available
+        // if (!controllerViewState.controlsVisible && subtitleIndex != null && skipIndicatorDuration == 0L && !enhancedSubtitlesEnabled) {
+        if (false) {
             AndroidView(
                 factory = {
                     SubtitleView(context).apply {
@@ -820,13 +821,8 @@ fun PlaybackPageContent(
                             }
 
                             is PlaybackAction.ToggleCaptions -> {
-                                if (toggleSubtitles(player, subtitleIndex, it.index)) {
-                                    subtitleIndex = it.index
-                                } else {
-                                    subtitleIndex = null
-                                    subtitles = null
-                                }
-                                controllerViewState.hideControls()
+                                // Native captions are disabled - do nothing
+                                // Only enhanced subtitles are available
                             }
 
                             is PlaybackAction.PlaybackSpeed -> playbackSpeed = it.value
@@ -841,6 +837,15 @@ fun PlaybackPageContent(
 
                             PlaybackAction.ShowSceneDetails -> {
                                 showSceneDetails = true
+                            }
+                            
+                            PlaybackAction.ToggleEnhancedSubtitles -> {
+                                enhancedSubtitlesEnabled = !enhancedSubtitlesEnabled
+                                controllerViewState.hideControls()
+                            }
+                            
+                            PlaybackAction.ToggleAutoPause -> {
+                                enhancedSubtitleViewModel.toggleAutoPause()
                             }
                         }
                     },
@@ -883,6 +888,8 @@ fun PlaybackPageContent(
                         },
                     videoDecoder = videoDecoder,
                     audioDecoder = audioDecoder,
+                    enhancedSubtitlesEnabled = enhancedSubtitlesEnabled,
+                    autoPauseEnabled = autoPauseEnabled,
                 )
             }
         }
@@ -965,6 +972,73 @@ fun PlaybackPageContent(
                     )
                 }
             }
+        }
+        
+        // Enhanced Subtitle Overlay - placed at the end to ensure it's on top
+        if (enhancedSubtitlesEnabled) {
+            // Track player position for subtitle synchronization
+            var playerPosition by remember { mutableLongStateOf(0L) }
+            LaunchedEffect(enhancedSubtitlesEnabled) {
+                if (enhancedSubtitlesEnabled) {
+                    while (true) {
+                        playerPosition = player.currentPosition
+                        kotlinx.coroutines.delay(100) // Update every 100ms for smooth subtitle sync
+                    }
+                }
+            }
+            
+            val currentSceneItem = currentScene?.item
+            val subtitleUrl = if (currentSceneItem?.captionUrl != null) {
+                // If captionUrl exists, ensure it has query parameters
+                val baseUrl = android.net.Uri.parse(currentSceneItem.captionUrl)
+                if (currentSceneItem.captions.isNotEmpty()) {
+                    val firstCaption = currentSceneItem.captions.first()
+                    baseUrl.buildUpon()
+                        .clearQuery()
+                        .appendQueryParameter("lang", firstCaption.language_code)
+                        .appendQueryParameter("type", firstCaption.caption_type)
+                        .build()
+                        .toString()
+                } else {
+                    currentSceneItem.captionUrl
+                }
+            } else {
+                // If captionUrl is null but captions exist, try to build the URL from stream URL
+                if (currentSceneItem?.captions?.isNotEmpty() == true && currentSceneItem.streamUrl != null) {
+                    // Build caption URL: {baseURL}/scene/{sceneID}/caption?lang={lang}&type={type}
+                    try {
+                        val streamUrl = android.net.Uri.parse(currentSceneItem.streamUrl)
+                        // Replace "/stream" with "/caption" in the path
+                        val path = streamUrl.path?.replace("/stream", "/caption") ?: "/scene/${currentSceneItem.id}/caption"
+                        val baseUrl = streamUrl.buildUpon()
+                            .path(path)
+                            .clearQuery()
+                            .build()
+                        // Use the first available caption
+                        val firstCaption = currentSceneItem.captions.first()
+                        baseUrl.buildUpon()
+                            .appendQueryParameter("lang", firstCaption.language_code)
+                            .appendQueryParameter("type", firstCaption.caption_type)
+                            .build()
+                            .toString()
+                    } catch (e: Exception) {
+                        null
+                    }
+                } else {
+                    null
+                }
+            }
+            // Use tracked player position for subtitle synchronization
+            val currentTimeSeconds = (playerPosition / 1000.0).coerceAtLeast(0.0)
+            
+            com.github.damontecres.stashapp.subtitle.EnhancedSubtitleOverlay(
+                viewModel = enhancedSubtitleViewModel,
+                currentTimeSeconds = currentTimeSeconds,
+                subtitleUrl = subtitleUrl,
+                isVisible = enhancedSubtitlesEnabled,
+                onPausePlayer = { player.pause() },
+                modifier = Modifier.fillMaxSize()
+            )
         }
     }
 }
