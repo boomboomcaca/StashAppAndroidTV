@@ -68,6 +68,9 @@ import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.exoplayer.ExoPlayer
+import android.os.Handler
+import android.os.Looper
+import com.github.damontecres.stashapp.subtitle.EnhancedSubtitleViewModel
 import androidx.media3.ui.SubtitleView
 import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
@@ -679,7 +682,7 @@ fun PlaybackPageContent(
         focusRequester.tryRequestFocus()
     }
     val playbackKeyHandler =
-        remember {
+        remember(enhancedSubtitlesEnabled, enhancedSubtitleViewModel) {
             PlaybackKeyHandler(
                 isTvDevice = isTvDevice,
                 player = player,
@@ -688,6 +691,8 @@ fun PlaybackPageContent(
                 nextWithUpDown = nextWithUpDown,
                 controllerViewState = controllerViewState,
                 updateSkipIndicator = updateSkipIndicator,
+                enhancedSubtitleViewModel = enhancedSubtitleViewModel,
+                enhancedSubtitlesEnabled = enhancedSubtitlesEnabled,
             )
         }
     Box(
@@ -1094,44 +1099,262 @@ class PlaybackKeyHandler(
     private val nextWithUpDown: Boolean,
     private val controllerViewState: ControllerViewState,
     private val updateSkipIndicator: (Long) -> Unit,
+    private val enhancedSubtitleViewModel: EnhancedSubtitleViewModel? = null,
+    private val enhancedSubtitlesEnabled: Boolean = false,
 ) {
+    // Double-click detection timing (400ms, same as stash-server frontend)
+    private val doubleClickDelayMs = 400L
+    
+    // Track last key press time and pending handlers for double-click detection
+    private var lastUpArrowPress = 0L
+    private var lastDownArrowPress = 0L
+    private var upArrowHandler: Handler? = null
+    private var downArrowHandler: Handler? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    
+    /**
+     * Handle up arrow key with double-click detection:
+     * - Single click: Repeat current subtitle (seek to current subtitle start)
+     * - Double click (within 400ms): Seek to previous subtitle
+     */
+    private fun handleUpArrowKey() {
+        val now = System.currentTimeMillis()
+        val timeSinceLastPress = now - lastUpArrowPress
+        
+        // Cancel any pending single-click handler
+        upArrowHandler?.removeCallbacksAndMessages(null)
+        upArrowHandler = null
+        
+        if (timeSinceLastPress < doubleClickDelayMs && timeSinceLastPress > 0) {
+            // Double click detected - seek to previous subtitle
+            lastUpArrowPress = 0L
+            val currentTimeSeconds = (player.currentPosition / 1000.0).coerceAtLeast(0.0)
+            val prevCueTime = enhancedSubtitleViewModel?.seekToPreviousCue(currentTimeSeconds)
+            if (prevCueTime != null) {
+                player.seekTo((prevCueTime * 1000).toLong())
+                if (!player.isPlaying) {
+                    player.play()
+                }
+                // Don't show controls when enhanced subtitles are enabled
+            }
+        } else {
+            // Single click - will trigger after delay if no second press
+            lastUpArrowPress = now
+            
+            val handler = Handler(Looper.getMainLooper())
+            handler.postDelayed({
+                val currentTime = System.currentTimeMillis()
+                val timeSincePress = currentTime - lastUpArrowPress
+                
+                // Only execute if this was a single press (not a double press)
+                if (timeSincePress >= doubleClickDelayMs && lastUpArrowPress != 0L) {
+                    // Single press - repeat current subtitle
+                    val currentTimeSeconds = (player.currentPosition / 1000.0).coerceAtLeast(0.0)
+                    val currentCueStartTime = enhancedSubtitleViewModel?.seekToCurrentCueStart(currentTimeSeconds)
+                    if (currentCueStartTime != null) {
+                        player.seekTo((currentCueStartTime * 1000).toLong())
+                        if (!player.isPlaying) {
+                            player.play()
+                        }
+                        // Don't show controls when enhanced subtitles are enabled
+                    }
+                    lastUpArrowPress = 0L
+                }
+            }, doubleClickDelayMs)
+            upArrowHandler = handler
+        }
+    }
+    
+    /**
+     * Handle left/right arrow keys:
+     * - Control bar visible: Seek backward/forward (10s default, 5s with Shift, 60s with Ctrl/Alt)
+     * - Enhanced subtitles enabled and control bar hidden:
+     *   - If not in word navigation mode: Enter word navigation mode
+     *   - If in word navigation mode: Navigate to previous/next word
+     * @return true if event was handled (consumed), false if should propagate
+     */
+    private fun handleLeftRightArrowKey(event: KeyEvent): Boolean {
+        val isLeft = event.key == Key.DirectionLeft
+        
+        if (controllerViewState.controlsVisible) {
+            // Control bar visible: Seek backward/forward
+            if (event.type == KeyEventType.KeyUp) {
+                // Calculate seek factor based on modifier keys
+                var seekFactor = 10L // Default 10 seconds
+                try {
+                    val metaState = event.nativeKeyEvent.metaState
+                    // Check for Shift key (0x01), Ctrl key (0x1000), Alt key (0x02)
+                    val hasShift = (metaState and android.view.KeyEvent.META_SHIFT_ON) != 0
+                    val hasCtrl = (metaState and android.view.KeyEvent.META_CTRL_ON) != 0
+                    val hasAlt = (metaState and android.view.KeyEvent.META_ALT_ON) != 0
+                    
+                    when {
+                        hasShift -> seekFactor = 5L // Shift + left/right: 5 seconds
+                        hasCtrl || hasAlt -> seekFactor = 60L // Ctrl/Alt + left/right: 60 seconds
+                    }
+                } catch (e: Exception) {
+                    // Fallback to default if meta state detection fails
+                }
+                
+                val seekTime = if (isLeft) -seekFactor else seekFactor
+                val currentTime = player.currentPosition + (seekTime * 1000)
+                val duration = player.duration
+                val targetTime = currentTime.coerceIn(0L, duration)
+                
+                player.seekTo(targetTime)
+                updateSkipIndicator(seekTime * 1000)
+                controllerViewState.showControls()
+                return true // Event handled
+            }
+            return false // If not KeyUp, let it propagate
+        } else {
+            // Control bar hidden: Enhanced subtitle word navigation
+            if (enhancedSubtitlesEnabled && enhancedSubtitleViewModel != null) {
+                if (event.type == KeyEventType.KeyUp) {
+                    // Navigate words: if no word selected, left goes to last, right goes to first
+                    // The navigation methods handle entering word navigation mode automatically
+                    if (isLeft) {
+                        enhancedSubtitleViewModel.navigateToPreviousWord()
+                    } else {
+                        enhancedSubtitleViewModel.navigateToNextWord()
+                    }
+                    // Don't show control bar when navigating words
+                }
+                return true // Event handled
+            } else {
+                // Default behavior: seek backward/forward on KeyDown
+                if (event.type == KeyEventType.KeyDown) {
+                    if (skipWithLeftRight) {
+                        if (isLeft) {
+                        updateSkipIndicator(-player.seekBackIncrement)
+                        player.seekBack()
+                        } else {
+                        player.seekForward()
+                        updateSkipIndicator(player.seekForwardIncrement)
+                        }
+                        return true // Event handled
+                    }
+                }
+                return false // Let it propagate if not handled
+            }
+        }
+    }
+    
+    /**
+     * Handle up/down arrow keys:
+     * - Enhanced subtitles enabled: Handle up/down arrow with double-click detection
+     * - Default behavior: Media navigation or show controls
+     * Note: This function is only called when control bar is hidden
+     */
+    private fun handleUpDownArrowKey(event: KeyEvent) {
+                // Handle up/down keys on KeyUp for media navigation
+        if (event.type == KeyEventType.KeyUp) {
+            // Enhanced subtitle navigation takes priority when enabled
+            if (enhancedSubtitlesEnabled && enhancedSubtitleViewModel != null) {
+                when (event.key) {
+                    Key.DirectionUp -> {
+                        handleUpArrowKey()
+                        return
+                    }
+                    Key.DirectionDown -> {
+                        handleDownArrowKey()
+                        return
+                    }
+                    else -> { /* Fall through to default behavior */ }
+                }
+            }
+            
+            // Default behavior when enhanced subtitles not enabled or not up/down
+            if (nextWithUpDown && event.key == Key.DirectionUp) {
+                        player.seekToPreviousMediaItem()
+                return
+            } else if (nextWithUpDown && event.key == Key.DirectionDown) {
+                        player.seekToNextMediaItem()
+                return
+            } else if (event.key == Key.DirectionUp || event.key == Key.DirectionDown) {
+                // Only show controls for up/down keys
+                        controllerViewState.showControls()
+                return
+            }
+        }
+    }
+    
+    /**
+     * Handle down arrow key with double-click detection:
+     * - Single click: Show control bar
+     * - Double click (within 400ms): Seek to next subtitle
+     */
+    private fun handleDownArrowKey() {
+        val now = System.currentTimeMillis()
+        val timeSinceLastPress = now - lastDownArrowPress
+        
+        // Cancel any pending single-click handler
+        downArrowHandler?.removeCallbacksAndMessages(null)
+        downArrowHandler = null
+        
+        if (timeSinceLastPress < doubleClickDelayMs && timeSinceLastPress > 0) {
+            // Double click detected - seek to next subtitle
+            lastDownArrowPress = 0L
+            val currentTimeSeconds = (player.currentPosition / 1000.0).coerceAtLeast(0.0)
+            val nextCueTime = enhancedSubtitleViewModel?.seekToNextCue(currentTimeSeconds)
+            if (nextCueTime != null) {
+                player.seekTo((nextCueTime * 1000).toLong())
+                if (!player.isPlaying) {
+                    player.play()
+                }
+                controllerViewState.showControls()
+            }
+        } else {
+            // Single click - will trigger after delay if no second press
+            lastDownArrowPress = now
+            
+            val handler = Handler(Looper.getMainLooper())
+            handler.postDelayed({
+                val currentTime = System.currentTimeMillis()
+                val timeSincePress = currentTime - lastDownArrowPress
+                
+                // Only execute if this was a single press (not a double press)
+                if (timeSincePress >= doubleClickDelayMs && lastDownArrowPress != 0L) {
+                    // Single press - show control bar
+                    controllerViewState.showControls()
+                    lastDownArrowPress = 0L
+                }
+            }, doubleClickDelayMs)
+            downArrowHandler = handler
+        }
+    }
+    
     fun onKeyEvent(it: KeyEvent): Boolean {
         var result = true
         if (!controlsEnabled) {
             result = false
         } else if (isDpad(it)) {
-            if (!controllerViewState.controlsVisible) {
-                // Handle left/right keys on KeyDown for continuous seeking
-                if (it.type == KeyEventType.KeyDown) {
-                    if (skipWithLeftRight && it.key == Key.DirectionLeft) {
-                        updateSkipIndicator(-player.seekBackIncrement)
-                        player.seekBack()
-                        return true
-                    } else if (skipWithLeftRight && it.key == Key.DirectionRight) {
-                        player.seekForward()
-                        updateSkipIndicator(player.seekForwardIncrement)
-                        return true
-                    }
+            when (it.key) {
+                Key.DirectionLeft, Key.DirectionRight -> {
+                    // Left/Right keys: handle seek when control bar visible, or word navigation when hidden
+                    val handled = handleLeftRightArrowKey(it)
+                    return handled
                 }
-                // Handle up/down keys on KeyUp for media navigation
-                if (it.type == KeyEventType.KeyUp) {
-                    if (nextWithUpDown && it.key == Key.DirectionUp) {
-                        player.seekToPreviousMediaItem()
-                        return true
-                    } else if (nextWithUpDown && it.key == Key.DirectionDown) {
-                        player.seekToNextMediaItem()
-                        return true
-                    } else if (it.key == Key.DirectionUp || it.key == Key.DirectionDown) {
-                        // Only show controls for up/down keys, not left/right keys
-                        controllerViewState.showControls()
-                        return true
-                    }
-                    // For left/right keys on KeyUp, do nothing (don't show controls)
+                Key.DirectionUp, Key.DirectionDown -> {
+                    // Up/Down keys: let control bar handle when visible, or handle subtitle navigation when hidden
+                    if (controllerViewState.controlsVisible) {
+                        // Control bar visible: let it handle navigation
+                        return false
+                    } else {
+                        // Control bar hidden: handle subtitle navigation or default behavior
+                        handleUpDownArrowKey(it)
                     return true
                 }
+                }
+                else -> { /* Other DPad keys */ }
+            }
+            
+            // Fallback for other DPad keys
+            if (!controllerViewState.controlsVisible) {
+                // Default behavior for other DPad keys when control bar hidden
+                result = true
             } else {
-                // When controller is visible, let the control bar handle navigation
-                // Don't consume the event, let it propagate to control bar components
+                // When controller is visible, let the control bar handle navigation for other keys
                 result = false
             }
         } else if (isMedia(it)) {
@@ -1171,18 +1394,47 @@ class PlaybackKeyHandler(
             } else {
                 result = false
             }
-        } else if (it.key == Key.Enter && !controllerViewState.controlsVisible) {
+        } else if (it.key == Key.Enter || it.key == Key.DirectionCenter) {
             if (it.type == KeyEventType.KeyUp) {
-                controllerViewState.showControls()
-            } else {
-                result = false
+                // Enhanced subtitle word navigation mode takes priority
+                if (enhancedSubtitlesEnabled && enhancedSubtitleViewModel != null && 
+                    enhancedSubtitleViewModel.isInWordNavigationMode.value) {
+                    // Word navigation mode: lookup selected word
+                    enhancedSubtitleViewModel.selectCurrentWord()
+                    return true
+                } else {
+                    // Normal behavior: play/pause toggle
+                    // This works whether enhanced subtitles are enabled or not
+                    if (player.isPlaying) {
+                        player.pause()
+                        // Don't show controls when enhanced subtitles are enabled
+                        if (!enhancedSubtitlesEnabled) {
+                            controllerViewState.showControls()
+                        }
+                    } else {
+                        player.play()
+                    }
+                    return true
+                }
             }
-        } else if (it.key == Key.Back && controllerViewState.controlsVisible) {
+            result = false
+        } else if (it.key == Key.Back) {
             if (it.type == KeyEventType.KeyUp) {
-                // TODO change this to a BackHandler?
+                // Enhanced subtitle word navigation mode takes priority
+                if (enhancedSubtitlesEnabled && enhancedSubtitleViewModel != null && 
+                    enhancedSubtitleViewModel.isInWordNavigationMode.value) {
+                    // Exit word navigation mode
+                    enhancedSubtitleViewModel.exitWordNavigationMode()
+                    return true
+                } else if (controllerViewState.controlsVisible) {
+                    // Hide control bar
                 controllerViewState.hideControls()
                 if (!isTvDevice) {
                     // Allow to propagate up
+                        result = false
+                    }
+                } else {
+                    // Default behavior (allow propagation)
                     result = false
                 }
             } else {

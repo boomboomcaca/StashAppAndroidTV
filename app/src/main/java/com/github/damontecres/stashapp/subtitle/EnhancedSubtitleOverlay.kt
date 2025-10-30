@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
@@ -91,6 +92,14 @@ fun EnhancedSubtitleOverlay(
         
         // Check auto-pause
         if (viewModel.checkAutoPause(currentTimeSeconds)) {
+            onPausePlayer?.invoke()
+        }
+    }
+    
+    // Auto-pause when dictionary dialog opens (when a word is selected)
+    androidx.compose.runtime.LaunchedEffect(selectedWord) {
+        if (selectedWord != null) {
+            // Word selected - pause player to show dictionary dialog
             onPausePlayer?.invoke()
         }
     }
@@ -394,13 +403,17 @@ private fun DictionaryDialog(
         Card(
             modifier = Modifier
                 .fillMaxWidth(0.8f)
-                .widthIn(max = 600.dp),
+                .widthIn(max = 600.dp)
+                .fillMaxHeight(0.85f),
             shape = RoundedCornerShape(16.dp)
         ) {
+            val scrollState = rememberScrollState()
+            
             Column(
                 modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
                     .padding(24.dp)
-                    .fillMaxWidth()
             ) {
                 // Header
                 Row(
@@ -448,9 +461,7 @@ private fun DictionaryDialog(
                     }
                     entry != null -> {
                         Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .verticalScroll(rememberScrollState())
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             // Pronunciation
                             entry.pronunciation?.let {
@@ -499,13 +510,21 @@ private fun DictionaryDialog(
                             }
                             
                             // Etymology
-                            entry.etymology?.let {
-                                Text(
-                                    text = "Etymology: $it",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(top = 8.dp)
-                                )
+                            entry.etymology?.takeIf { it.isNotEmpty() }?.let {
+                                Column(modifier = Modifier.padding(top = 8.dp)) {
+                                    Text(
+                                        text = "Etymology:",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = it,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                }
                             }
                         }
                     }

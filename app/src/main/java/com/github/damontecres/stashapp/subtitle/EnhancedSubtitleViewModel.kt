@@ -327,14 +327,39 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
     
     fun navigateToNextWord() {
         val segments = _wordSegments.value
-        if (_selectedWordIndex.value < segments.size - 1) {
-            _selectedWordIndex.value = _selectedWordIndex.value + 1
+        if (segments.isEmpty()) return
+        
+        val currentIndex = _selectedWordIndex.value
+        
+        // If no word is selected, start from the first word
+        if (currentIndex < 0) {
+            _isInWordNavigationMode.value = true
+            _selectedWordIndex.value = 0
+        } else if (currentIndex < segments.size - 1) {
+            // Move to next word
+            _selectedWordIndex.value = currentIndex + 1
+        } else {
+            // At the end, cycle to the first word
+            _selectedWordIndex.value = 0
         }
     }
     
     fun navigateToPreviousWord() {
-        if (_selectedWordIndex.value > 0) {
-            _selectedWordIndex.value = _selectedWordIndex.value - 1
+        val segments = _wordSegments.value
+        if (segments.isEmpty()) return
+        
+        val currentIndex = _selectedWordIndex.value
+        
+        // If no word is selected, start from the last word
+        if (currentIndex < 0) {
+            _isInWordNavigationMode.value = true
+            _selectedWordIndex.value = segments.size - 1
+        } else if (currentIndex > 0) {
+            // Move to previous word
+            _selectedWordIndex.value = currentIndex - 1
+        } else {
+            // At the beginning, cycle to the last word
+            _selectedWordIndex.value = segments.size - 1
         }
     }
     
@@ -344,6 +369,74 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
         if (index >= 0 && index < segments.size) {
             selectWord(segments[index].word)
         }
+    }
+    
+    /**
+     * Get current cue index based on playback time
+     */
+    fun getCurrentCueIndex(currentTimeSeconds: Double): Int {
+        val cues = _subtitles.value
+        if (cues.isEmpty()) return -1
+        
+        // Find the current cue index
+        for (i in cues.indices) {
+            val cue = cues[i]
+            if (currentTimeSeconds >= cue.startTime && currentTimeSeconds <= cue.endTime) {
+                return i
+            }
+        }
+        
+        // If no current cue, find the nearest upcoming cue
+        for (i in cues.indices) {
+            if (currentTimeSeconds < cues[i].startTime) {
+                return i
+            }
+        }
+        
+        // If past all cues, return the last index
+        return cues.size - 1
+    }
+    
+    /**
+     * Seek to previous subtitle cue
+     */
+    fun seekToPreviousCue(currentTimeSeconds: Double): Double? {
+        val cues = _subtitles.value
+        if (cues.isEmpty()) return null
+        
+        val currentIndex = getCurrentCueIndex(currentTimeSeconds)
+        if (currentIndex > 0) {
+            return cues[currentIndex - 1].startTime
+        }
+        return null
+    }
+    
+    /**
+     * Seek to next subtitle cue
+     */
+    fun seekToNextCue(currentTimeSeconds: Double): Double? {
+        val cues = _subtitles.value
+        if (cues.isEmpty()) return null
+        
+        val currentIndex = getCurrentCueIndex(currentTimeSeconds)
+        if (currentIndex < cues.size - 1) {
+            return cues[currentIndex + 1].startTime
+        }
+        return null
+    }
+    
+    /**
+     * Seek to current subtitle start time (repeat current subtitle)
+     */
+    fun seekToCurrentCueStart(currentTimeSeconds: Double): Double? {
+        val cues = _subtitles.value
+        if (cues.isEmpty()) return null
+        
+        val currentIndex = getCurrentCueIndex(currentTimeSeconds)
+        if (currentIndex >= 0 && currentIndex < cues.size) {
+            return cues[currentIndex].startTime
+        }
+        return null
     }
     
     /**

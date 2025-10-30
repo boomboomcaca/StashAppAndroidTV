@@ -2,6 +2,9 @@ package com.github.damontecres.stashapp.subtitle
 
 import android.util.Log
 import com.apollographql.apollo.ApolloClient
+import com.apollographql.apollo.api.Optional
+import com.github.damontecres.stashapp.api.OllamaExplainWordMutation
+import com.github.damontecres.stashapp.api.type.OllamaExplainWordInput
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -38,48 +41,56 @@ class DictionaryService(
                     return@withContext createBasicEntry(word, language, "服务不可用")
                 }
                 
-                // TODO: Uncomment when GraphQL types are generated
-                // This requires the OllamaExplainWord.graphql to be processed and types generated
-                // For now, return a basic entry indicating dictionary lookup is not available
-                // 
-                // val input = OllamaExplainWordInput(
-                //     word = word,
-                //     context = context,
-                //     language = language
-                // )
-                // 
-                // val result = apolloClient.mutation(OllamaExplainWordMutation(input))
-                //     .execute()
-                // 
-                // val response = result.data?.ollamaExplainWord
-                // if (response != null) {
-                //     val entry = DictionaryEntry(
-                //         word = response.word,
-                //         pronunciation = response.pronunciation,
-                //         definitions = response.definitions.map { def ->
-                //             DictionaryDefinition(
-                //                 partOfSpeech = def.partOfSpeech ?: "unknown",
-                //                 meaning = def.meaning,
-                //                 examples = def.examples?.filterNotNull() ?: emptyList()
-                //             )
-                //         },
-                //         etymology = response.etymology
-                //     )
-                //     
-                //     if (cache.size >= MAX_CACHE_SIZE) {
-                //         val firstKey = cache.keys.firstOrNull()
-                //         if (firstKey != null) {
-                //             cache.remove(firstKey)
-                //         }
-                //     }
-                //     cache[cacheKey] = entry
-                //     
-                //     return@withContext entry
-                // }
+                // Use GraphQL mutation to lookup word
+                val input = OllamaExplainWordInput(
+                    word = word,
+                    context = context,
+                    language = Optional.presentIfNotNull(language.takeIf { it.isNotEmpty() })
+                )
                 
-                // Temporary: Return basic entry until GraphQL types are available
-                Log.d(TAG, "Dictionary lookup temporarily disabled - GraphQL types not generated yet")
-                return@withContext createBasicEntry(word, language, "词典查询功能待启用（需要重新编译以生成 GraphQL 类型）")
+                val mutation = OllamaExplainWordMutation(input)
+                val result = apolloClient.mutation(mutation).execute()
+                
+                val response = result.data?.ollamaExplainWord
+                if (response != null) {
+                    val entry = DictionaryEntry(
+                        word = response.word,
+                        pronunciation = response.pronunciation,
+                        definitions = response.definitions.map { def ->
+                            DictionaryDefinition(
+                                partOfSpeech = def.partOfSpeech.ifEmpty { "unknown" },
+                                meaning = def.meaning,
+                                examples = def.examples.filterNotNull()
+                            )
+                        },
+                        etymology = response.etymology
+                    )
+                    
+                    // Cache the entry with size limit
+                    if (cache.size >= MAX_CACHE_SIZE) {
+                        val firstKey = cache.keys.firstOrNull()
+                        if (firstKey != null) {
+                            cache.remove(firstKey)
+                        }
+                    }
+                    cache[cacheKey] = entry
+                    
+                    Log.d(TAG, "Dictionary lookup successful for word: $word")
+                    return@withContext entry
+                } else {
+                    // Handle errors
+                    if (result.errors != null && result.errors!!.isNotEmpty()) {
+                        val errorMsg = result.errors!!.joinToString(", ") { it.message }
+                        Log.w(TAG, "Dictionary lookup errors for word: $word - $errorMsg")
+                        return@withContext createBasicEntry(word, language, "查询错误: $errorMsg")
+                    }
+                    if (result.exception != null) {
+                        Log.e(TAG, "Dictionary lookup exception for word: $word", result.exception)
+                        return@withContext createBasicEntry(word, language, "查词失败: ${result.exception!!.message}")
+                    }
+                    Log.w(TAG, "Dictionary lookup returned no data for word: $word")
+                    return@withContext createBasicEntry(word, language, "未找到释义")
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Dictionary lookup failed for word: $word", e)
                 return@withContext createBasicEntry(word, language, "查词失败: ${e.message}")
