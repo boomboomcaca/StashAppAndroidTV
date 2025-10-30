@@ -1183,36 +1183,8 @@ class PlaybackKeyHandler(
         val isLeft = event.key == Key.DirectionLeft
         
         if (controllerViewState.controlsVisible) {
-            // Control bar visible: Seek backward/forward
-            if (event.type == KeyEventType.KeyUp) {
-                // Calculate seek factor based on modifier keys
-                var seekFactor = 10L // Default 10 seconds
-                try {
-                    val metaState = event.nativeKeyEvent.metaState
-                    // Check for Shift key (0x01), Ctrl key (0x1000), Alt key (0x02)
-                    val hasShift = (metaState and android.view.KeyEvent.META_SHIFT_ON) != 0
-                    val hasCtrl = (metaState and android.view.KeyEvent.META_CTRL_ON) != 0
-                    val hasAlt = (metaState and android.view.KeyEvent.META_ALT_ON) != 0
-                    
-                    when {
-                        hasShift -> seekFactor = 5L // Shift + left/right: 5 seconds
-                        hasCtrl || hasAlt -> seekFactor = 60L // Ctrl/Alt + left/right: 60 seconds
-                    }
-                } catch (e: Exception) {
-                    // Fallback to default if meta state detection fails
-                }
-                
-                val seekTime = if (isLeft) -seekFactor else seekFactor
-                val currentTime = player.currentPosition + (seekTime * 1000)
-                val duration = player.duration
-                val targetTime = currentTime.coerceIn(0L, duration)
-                
-                player.seekTo(targetTime)
-                updateSkipIndicator(seekTime * 1000)
-                controllerViewState.showControls()
-                return true // Event handled
-            }
-            return false // If not KeyUp, let it propagate
+            // Control bar visible: do not adjust progress here. Let focused UI (e.g., seek bar) handle left/right.
+            return false
         } else {
             // Control bar hidden: Enhanced subtitle word navigation
             if (enhancedSubtitlesEnabled && enhancedSubtitleViewModel != null) {
@@ -1308,7 +1280,10 @@ class PlaybackKeyHandler(
                 if (!player.isPlaying) {
                     player.play()
                 }
-                controllerViewState.showControls()
+                // Do not show control bar on double down when enhanced subtitles are enabled
+                if (!enhancedSubtitlesEnabled) {
+                    controllerViewState.showControls()
+                }
             }
         } else {
             // Single click - will trigger after delay if no second press
@@ -1402,6 +1377,15 @@ class PlaybackKeyHandler(
             }
         } else if (it.key == Key.Enter || it.key == Key.DirectionCenter) {
             if (it.type == KeyEventType.KeyUp) {
+                // If enhanced subtitles auto-paused the player, a single OK/Enter should resume playback
+                if (enhancedSubtitlesEnabled && enhancedSubtitleViewModel != null &&
+                    enhancedSubtitleViewModel.isAutoPaused.value
+                ) {
+                    val seconds = (player.currentPosition / 1000.0).coerceAtLeast(0.0)
+                    enhancedSubtitleViewModel.notifyUserResumed(seconds)
+                    player.play()
+                    return true
+                }
                 // Enhanced subtitle word navigation mode takes priority
                 if (enhancedSubtitlesEnabled && enhancedSubtitleViewModel != null && 
                     enhancedSubtitleViewModel.isInWordNavigationMode.value) {
