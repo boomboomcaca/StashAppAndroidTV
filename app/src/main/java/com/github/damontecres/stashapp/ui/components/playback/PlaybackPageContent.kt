@@ -522,6 +522,12 @@ fun PlaybackPageContent(
         )
         StashExoPlayer.addListener(
             object : Player.Listener {
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    if (isPlaying) {
+                        val seconds = player.currentPosition / 1000.0
+                        enhancedSubtitleViewModel.notifyUserResumed(seconds)
+                    }
+                }
                 override fun onCues(cueGroup: CueGroup) {
 //                    val cues =
 //                        cueGroup.cues

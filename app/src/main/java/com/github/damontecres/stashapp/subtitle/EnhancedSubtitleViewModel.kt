@@ -454,6 +454,12 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
         }
         val timeUntilEnd = cue.endTime - currentTimeSeconds
         
+        // If user just manually resumed playback, suppress auto-pause briefly
+        if (shouldSuppressAutoPause(currentTimeSeconds, cue)) {
+            _isAutoPaused.value = false
+            return false
+        }
+
         // If time has passed the pause threshold or subtitle end, reset paused state
         // This handles the case when user resumes playback after auto-pause
         if (timeUntilEnd <= 0 || currentTimeSeconds >= cue.endTime) {
@@ -476,6 +482,46 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
         }
         
         return shouldPause
+    }
+
+    // --- Manual resume suppression logic ---
+    private var lastManualResumeSeconds: Double? = null
+    private var lastManualResumeCue: SubtitleCue? = null
+
+    /**
+     * Call when user explicitly resumes playback (e.g., presses OK/Play).
+     * This will suppress auto-pause for a small window and for the current cue.
+     */
+    fun notifyUserResumed(currentTimeSeconds: Double) {
+        lastManualResumeSeconds = currentTimeSeconds
+        lastManualResumeCue = _currentCue.value
+    }
+
+    /**
+     * Returns true if auto-pause should be suppressed due to a recent manual resume.
+     * Suppression ends when: time advances beyond window, or cue changes/ends.
+     */
+    private fun shouldSuppressAutoPause(currentTimeSeconds: Double, cue: SubtitleCue): Boolean {
+        val resumeAt = lastManualResumeSeconds ?: return false
+        val resumeCue = lastManualResumeCue
+
+        // Suppress for 0.75 seconds after resume to allow playback to escape pause window
+        val suppressWindow = 0.75
+        val withinTimeWindow = currentTimeSeconds - resumeAt <= suppressWindow && currentTimeSeconds >= resumeAt
+
+        // Suppress only for the same cue the user resumed in
+        val sameCue = resumeCue != null && resumeCue.startTime == cue.startTime && resumeCue.endTime == cue.endTime
+
+        // Clear suppression if cue changed or time window elapsed substantially
+        if (!withinTimeWindow || !sameCue) {
+            // Do not clear immediately if sameCue but window passed; allow GC
+            if (!sameCue || currentTimeSeconds - resumeAt > suppressWindow) {
+                lastManualResumeSeconds = null
+                lastManualResumeCue = null
+            }
+        }
+
+        return withinTimeWindow && sameCue
     }
     
     override fun onCleared() {
