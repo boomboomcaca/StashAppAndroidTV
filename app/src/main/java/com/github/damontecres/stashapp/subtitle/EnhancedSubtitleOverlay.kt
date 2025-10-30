@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -436,12 +438,34 @@ private fun DictionaryDialog(
                         color = Color(0xFFF2F6FA),
                         fontWeight = FontWeight.Bold
                     )
-                    TvText(
-                        text = if (isFavorite) "★" else "☆",
-                        fontSize = 28.sp,
-                        color = Color(0xFFF2F6FA),
-                        modifier = Modifier.clickable(onClick = onToggleFavorite)
-                    )
+                    // Favorite star with focus styling
+                    val favoriteInteractionSource = remember { MutableInteractionSource() }
+                    val isFavoriteFocused by favoriteInteractionSource.collectIsFocusedAsState()
+                    val favoriteBgColor = if (isFavoriteFocused) {
+                        Color(0xFF4A90E2).copy(alpha = 0.8f) // Blue background when focused
+                    } else {
+                        Color.Transparent
+                    }
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                color = favoriteBgColor,
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .focusable(interactionSource = favoriteInteractionSource)
+                            .clickable(
+                                interactionSource = favoriteInteractionSource,
+                                indication = null,
+                                onClick = onToggleFavorite
+                            )
+                    ) {
+                        TvText(
+                            text = if (isFavorite) "★" else "☆",
+                            fontSize = 28.sp,
+                            color = Color(0xFFF2F6FA)
+                        )
+                    }
                 }
 
                 // POS chip + pronunciation
@@ -459,14 +483,34 @@ private fun DictionaryDialog(
                             TvText(text = posText.ifEmpty { "词性" }, color = Color(0xFFF2F6FA), fontSize = 18.sp)
                         }
                         e.pronunciation?.let { pr ->
-                            TvText(
-                                text = " [${pr}]",
-                                color = Color(0xFF4DA3FF),
-                                fontSize = 22.sp,
+                            // Pronunciation with focus styling
+                            val pronunciationInteractionSource = remember { MutableInteractionSource() }
+                            val isPronunciationFocused by pronunciationInteractionSource.collectIsFocusedAsState()
+                            val pronunciationBgColor = if (isPronunciationFocused) {
+                                Color(0xFF4A90E2).copy(alpha = 0.8f) // Blue background when focused
+                            } else {
+                                Color.Transparent
+                            }
+                            Box(
                                 modifier = Modifier
-                                    .clickable(onClick = onPlayPronunciation)
-                                    .padding(start = 12.dp)
-                            )
+                                    .background(
+                                        color = pronunciationBgColor,
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .focusable(interactionSource = pronunciationInteractionSource)
+                                    .clickable(
+                                        interactionSource = pronunciationInteractionSource,
+                                        indication = null,
+                                        onClick = onPlayPronunciation
+                                    )
+                            ) {
+                                TvText(
+                                    text = " [${pr}]",
+                                    color = Color(0xFF4DA3FF),
+                                    fontSize = 22.sp
+                                )
+                            }
                         }
                     }
                 }
