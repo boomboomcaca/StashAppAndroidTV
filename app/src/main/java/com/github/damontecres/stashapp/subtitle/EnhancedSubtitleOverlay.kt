@@ -54,6 +54,7 @@ import androidx.tv.material3.MaterialTheme as TvMaterialTheme
 import androidx.tv.material3.Text as TvText
 import com.github.damontecres.stashapp.subtitle.EnhancedSubtitleViewModel
 import com.github.damontecres.stashapp.ui.compat.Button as CompatButton
+import com.github.damontecres.stashapp.ui.util.handleDPadKeyEvents
 
 /**
  * Enhanced Subtitle Overlay Component
@@ -453,6 +454,9 @@ private fun DictionaryDialog(
                                 shape = RoundedCornerShape(8.dp)
                             )
                             .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .handleDPadKeyEvents(
+                                onCenter = onToggleFavorite
+                            )
                             .focusable(interactionSource = favoriteInteractionSource)
                             .clickable(
                                 interactionSource = favoriteInteractionSource,
@@ -498,6 +502,9 @@ private fun DictionaryDialog(
                                         shape = RoundedCornerShape(8.dp)
                                     )
                                     .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .handleDPadKeyEvents(
+                                        onCenter = onPlayPronunciation
+                                    )
                                     .focusable(interactionSource = pronunciationInteractionSource)
                                     .clickable(
                                         interactionSource = pronunciationInteractionSource,
