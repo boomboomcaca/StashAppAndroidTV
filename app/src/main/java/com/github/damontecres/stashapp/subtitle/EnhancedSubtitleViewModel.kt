@@ -92,6 +92,10 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
         android.content.Context.MODE_PRIVATE
     )
     
+    // Favorites state
+    private val _favorites = MutableStateFlow<List<FavoriteWord>>(emptyList())
+    val favorites: StateFlow<List<FavoriteWord>> = _favorites.asStateFlow()
+
     init {
         loadPreferences()
         initializeServices()
@@ -100,6 +104,14 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
     private fun initializeServices() {
         pronunciationService = PronunciationService.getInstance(context)
         favoritesService = FavoritesService(context)
+        // Observe favorites so UI can react to changes
+        favoritesService?.let { service ->
+            viewModelScope.launch {
+                service.getFavorites().collect { list ->
+                    _favorites.value = list
+                }
+            }
+        }
     }
     
     fun setServer(server: StashServer?) {
@@ -262,7 +274,8 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
     }
     
     fun isFavorite(word: String): Boolean {
-        return favoritesService?.isFavorite(word, _detectedLanguage.value) ?: false
+        val language = _detectedLanguage.value
+        return _favorites.value.any { it.word == word && it.language == language }
     }
     
     /**

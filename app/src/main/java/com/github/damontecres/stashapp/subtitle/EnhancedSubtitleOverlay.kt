@@ -83,6 +83,7 @@ fun EnhancedSubtitleOverlay(
     val isLoadingSubtitles by viewModel.isLoadingSubtitles.collectAsState()
     val subtitleLoadError by viewModel.subtitleLoadError.collectAsState()
     val subtitles by viewModel.subtitles.collectAsState()
+    val favorites by viewModel.favorites.collectAsState()
     
     // Load subtitles when URL changes
     androidx.compose.runtime.LaunchedEffect(subtitleUrl) {
@@ -168,7 +169,8 @@ fun EnhancedSubtitleOverlay(
                             onPausePlayer?.invoke()
                         },
                         onToggleAutoPause = { viewModel.toggleAutoPause() },
-                        viewModel = viewModel
+                        viewModel = viewModel,
+                        isWordFavorite = { w -> favorites.any { it.word == w && it.language == detectedLanguage } }
                     )
                 }
             }
@@ -181,7 +183,7 @@ fun EnhancedSubtitleOverlay(
                 entry = dictionaryEntry,
                 isLoading = isLoadingDictionary,
                 detectedLanguage = detectedLanguage,
-                isFavorite = viewModel.isFavorite(word),
+                isFavorite = favorites.any { it.word == word && it.language == detectedLanguage },
                 onDismiss = { viewModel.selectWord(null) },
                 onPlayPronunciation = { viewModel.playPronunciation(word) },
                 onToggleFavorite = { viewModel.toggleFavorite(word) }
@@ -249,7 +251,8 @@ private fun EnhancedSubtitleText(
     detectedLanguage: String,
     onWordClick: (String) -> Unit,
     onToggleAutoPause: () -> Unit,
-    viewModel: EnhancedSubtitleViewModel
+    viewModel: EnhancedSubtitleViewModel,
+    isWordFavorite: (String) -> Boolean
 ) {
     // 字幕固定在底部，position 为 0 时贴着进度条（约70dp），正值向上移动
     // 进度条在底部约70dp处，字幕框底部贴着进度条
@@ -308,7 +311,7 @@ private fun EnhancedSubtitleText(
                         selectedIndex = selectedWordIndex,
                         fontSize = fontSize,
                         detectedLanguage = detectedLanguage,
-                        isFavorite = { word -> viewModel.isFavorite(word) },
+                        isFavorite = isWordFavorite,
                         onWordClick = onWordClick
                     )
                 }
