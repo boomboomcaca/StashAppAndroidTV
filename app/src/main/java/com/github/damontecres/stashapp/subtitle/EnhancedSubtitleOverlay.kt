@@ -403,114 +403,102 @@ private fun DictionaryDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        // Container: 更大圆角和 padding，左对齐高留白
+        // Container: dark rounded panel matching screenshot style
         val scrollState = rememberScrollState()
         Box(
             modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .widthIn(max = 960.dp)
+                .fillMaxWidth(0.9f)
+                .widthIn(max = 900.dp)
                 .fillMaxHeight(0.9f)
-                .clip(RoundedCornerShape(32.dp))
+                .clip(RoundedCornerShape(16.dp))
                 .background(Color(0xFF2C3E50))
         ) {
-            // 顶部右上角星标（去除关闭按钮）
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 28.dp, end = 38.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                // 星标按钮
-                TvText(
-                    text = if (isFavorite) "★" else "☆",
-                    fontSize = 32.sp,
-                    color = Color(0xFFF2F6FA),
-                    modifier = Modifier
-                        .focusable()
-                        .clickable(onClick = onToggleFavorite)
-                        .padding(end = 2.dp)
-                )
-            }
+            
 
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(scrollState)
-                    .padding(horizontal = 42.dp, vertical = 42.dp)
+                    .padding(horizontal = 28.dp, vertical = 22.dp)
             ) {
-                // Title & 词性/音标行全部左对齐
-                TvText(
-                    text = word,
-                    fontSize = 46.sp,
-                    color = Color(0xFFF2F6FA),
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
-                // 词性＆音标一行，左对齐
+                // Title with favorite on the right
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TvText(
+                        text = word,
+                        fontSize = 40.sp,
+                        color = Color(0xFFF2F6FA),
+                        fontWeight = FontWeight.Bold
+                    )
+                    TvText(
+                        text = if (isFavorite) "★" else "☆",
+                        fontSize = 28.sp,
+                        color = Color(0xFFF2F6FA),
+                        modifier = Modifier.clickable(onClick = onToggleFavorite)
+                    )
+                }
+
+                // POS chip + pronunciation
                 entry?.let { e ->
                     val posText = e.definitions.firstOrNull()?.partOfSpeech ?: ""
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(bottom = 24.dp)
+                        modifier = Modifier.padding(top = 12.dp, bottom = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(
                             modifier = Modifier
-                                .background(Color(0xFF3A4A55), RoundedCornerShape(24.dp))
-                                .padding(horizontal = 18.dp, vertical = 8.dp)
+                                .background(Color(0xFF3A4A55), RoundedCornerShape(50))
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
                         ) {
-                            TvText(
-                                text = posText.ifEmpty { "词性" },
-                                color = Color(0xFFF2F6FA),
-                                fontSize = 22.sp,
-                                lineHeight = 28.sp
-                            )
+                            TvText(text = posText.ifEmpty { "词性" }, color = Color(0xFFF2F6FA), fontSize = 18.sp)
                         }
                         e.pronunciation?.let { pr ->
                             TvText(
-                                text = "  [$pr]",
+                                text = " [${pr}]",
                                 color = Color(0xFF4DA3FF),
-                                fontSize = 26.sp,
+                                fontSize = 22.sp,
                                 modifier = Modifier
-                                    .focusable()
                                     .clickable(onClick = onPlayPronunciation)
-                                    .padding(start = 16.dp)
-                                ,
-                                lineHeight = 32.sp
+                                    .padding(start = 12.dp)
                             )
                         }
                     }
                 }
 
-                // 内容按段落展示，严格左对齐
+                // Content
                 when {
                     isLoading -> {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(36.dp),
+                                .padding(32.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             CircularProgressIndicator(color = Color(0xFFF2F6FA))
                         }
                     }
                     entry != null -> {
-                        // 释义每行分段，自动按换行/分号切割，如例句后另起一段
-                        val paras: List<String> = entry.definitions.flatMap {
-                            val base = it.meaning.split("\n|").map { it.trim() }.filter { it.isNotBlank() }
-                            val examples = it.examples
-                            if (examples.isNotEmpty()) base + examples else base
-                        }
                         Column(modifier = Modifier.fillMaxWidth()) {
-                            paras.forEachIndexed { i, para ->
+                            entry.definitions.forEach { definition ->
                                 TvText(
-                                    text = para,
+                                    text = definition.meaning,
                                     color = Color(0xFFF2F6FA),
                                     fontSize = 28.sp,
-                                    lineHeight = 38.sp,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = if(i==0) 0.dp else 16.dp)
+                                    lineHeight = 40.sp,
+                                    modifier = Modifier.padding(vertical = 12.dp)
                                 )
+                                definition.examples.takeIf { it.isNotEmpty() }?.forEach { example ->
+                                    TvText(
+                                        text = example,
+                                        color = Color(0xFFB9C7D3),
+                                        fontSize = 20.sp,
+                                        lineHeight = 28.sp,
+                                        modifier = Modifier.padding(start = 8.dp, bottom = 6.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -518,8 +506,7 @@ private fun DictionaryDialog(
                         TvText(
                             text = "未找到释义",
                             color = Color(0xFFFFCDD2),
-                            fontSize = 24.sp,
-                            lineHeight = 30.sp
+                            fontSize = 24.sp
                         )
                     }
                 }
