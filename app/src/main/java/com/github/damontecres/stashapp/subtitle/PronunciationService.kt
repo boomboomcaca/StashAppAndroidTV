@@ -1,9 +1,9 @@
 package com.github.damontecres.stashapp.subtitle
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaPlayer
-import android.net.Uri
 import android.util.Log
 import com.github.damontecres.stashapp.util.Constants
 import com.github.damontecres.stashapp.util.StashServer
@@ -34,6 +34,9 @@ class PronunciationService private constructor(context: Context) {
     // Track temporary files for cleanup
     private val tempFiles = ConcurrentHashMap<String, Long>() // file path -> creation time
     private var currentTempFile: String? = null // Current file being played
+    
+    // Cache for pre-downloaded audio files: word_language -> file path
+    private val audioCache = ConcurrentHashMap<String, String>() // cache key -> file path
     
     /**
      * Set the current server for API requests
@@ -88,15 +91,6 @@ class PronunciationService private constructor(context: Context) {
             return true
         }
     }
-    
-    /**
-     * Internal class to track playback attempt state
-     */
-    private class PlaybackAttempt(
-        val word: String,
-        val url: String,
-        var currentMethod: Int = 0
-    )
     
     /**
      * Register a temporary file for tracking
@@ -215,6 +209,22 @@ class PronunciationService private constructor(context: Context) {
                     }
                 }
                 
+                // Also clean up old cached audio files
+                val cacheKeysToRemove = mutableListOf<String>()
+                audioCache.forEach { (cacheKey, filePath) ->
+                    val file = File(filePath)
+                    if (!file.exists()) {
+                        cacheKeysToRemove.add(cacheKey)
+                    } else {
+                        val lastModified = file.lastModified()
+                        if (now - lastModified > maxAge) {
+                            cacheKeysToRemove.add(cacheKey)
+                            filesToDelete.add(filePath)
+                        }
+                    }
+                }
+                cacheKeysToRemove.forEach { audioCache.remove(it) }
+                
                 filesToDelete.forEach { path ->
                     deleteTempFile(path)
                 }
@@ -227,7 +237,7 @@ class PronunciationService private constructor(context: Context) {
                     }
                     files?.forEach { file ->
                         val filePath = file.absolutePath
-                        if (!tempFiles.containsKey(filePath)) {
+                        if (!tempFiles.containsKey(filePath) && !audioCache.values.contains(filePath)) {
                             // Not tracked, check if it's old
                             val lastModified = file.lastModified()
                             if (now - lastModified > maxAge) {
@@ -243,8 +253,8 @@ class PronunciationService private constructor(context: Context) {
                     }
                 }
                 
-                if (filesToDelete.isNotEmpty()) {
-                    Log.d(TAG, "Cleaned up ${filesToDelete.size} old temp files")
+                if (filesToDelete.isNotEmpty() || cacheKeysToRemove.isNotEmpty()) {
+                    Log.d(TAG, "Cleaned up ${filesToDelete.size} old temp files and ${cacheKeysToRemove.size} cache entries")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error during temp file cleanup", e)
@@ -253,7 +263,44 @@ class PronunciationService private constructor(context: Context) {
     }
     
     /**
+     * Pre-download audio file for a word (called when dictionary dialog opens)
+     */
+    suspend fun preloadPronunciation(word: String, language: String = "en"): Result<File> {
+        val cacheKey = "${word}_$language"
+        
+        // Check if already cached
+        audioCache[cacheKey]?.let { cachedPath ->
+            val cachedFile = File(cachedPath)
+            if (cachedFile.exists()) {
+                Log.d(TAG, "Audio already cached for word: '$word'")
+                return Result.success(cachedFile)
+            } else {
+                // File was deleted, remove from cache
+                audioCache.remove(cacheKey)
+            }
+        }
+        
+        return withContext(Dispatchers.IO) {
+            try {
+                val url = getPronunciationUrl(word, language)
+                if (url == null) {
+                    return@withContext Result.failure(Exception("No server configured or invalid URL"))
+                }
+                
+                val tempFile = downloadAudioFile(url)
+                audioCache[cacheKey] = tempFile.absolutePath
+                Log.d(TAG, "Pre-loaded audio for word: '$word', file: ${tempFile.absolutePath}")
+                Result.success(tempFile)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to preload pronunciation for word: '$word'", e)
+                Result.failure(e)
+            }
+        }
+    }
+    
+    /**
      * Play pronunciation for a word using backend API
+     * If the file was preloaded, use the cached file; otherwise download it
      */
     suspend fun playPronunciation(word: String, language: String = "en"): Result<Unit> {
         return withContext(Dispatchers.Main) {
@@ -267,11 +314,30 @@ class PronunciationService private constructor(context: Context) {
                 stop()
                 delay(50)
                 
-                val attempt = PlaybackAttempt(word, url)
+                val cacheKey = "${word}_$language"
+                val cachedFilePath = audioCache[cacheKey]
+                val tempFile = if (cachedFilePath != null && File(cachedFilePath).exists()) {
+                    // Use cached file
+                    Log.d(TAG, "Using cached audio file for word: '$word'")
+                    File(cachedFilePath)
+                } else {
+                    // Download if not cached
+                    Log.d(TAG, "Audio not cached, downloading for word: '$word'")
+                    withContext(Dispatchers.IO) {
+                        val file = downloadAudioFile(url)
+                        audioCache[cacheKey] = file.absolutePath
+                        file
+                    }
+                }
                 
                 suspendCancellableCoroutine { continuation ->
                     val player = MediaPlayer().apply {
-                        setAudioStreamType(android.media.AudioManager.STREAM_MUSIC)
+                        setAudioAttributes(
+                            AudioAttributes.Builder()
+                                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                                .setUsage(AudioAttributes.USAGE_MEDIA)
+                                .build()
+                        )
                         
                         setOnPreparedListener { mp ->
                             mp.start()
@@ -280,7 +346,14 @@ class PronunciationService private constructor(context: Context) {
                         setOnCompletionListener { mp ->
                             mp.release()
                             mediaPlayer = null
-                            currentTempFile?.let { deleteTempFile(it) }
+                            // Don't delete cached files - they'll be cleaned up by cleanupOldTempFiles
+                            // Only delete if not in cache (shouldn't happen, but safety check)
+                            currentTempFile?.let { filePath ->
+                                val cacheKey = "${word}_$language"
+                                if (audioCache[cacheKey] != filePath) {
+                                    deleteTempFile(filePath)
+                                }
+                            }
                             
                             if (continuation.isActive) {
                                 continuation.resume(Unit)
@@ -288,80 +361,14 @@ class PronunciationService private constructor(context: Context) {
                         }
                         
                         setOnErrorListener { mp, what, extra ->
-                            attempt.currentMethod++
-                            
-                            when (attempt.currentMethod) {
-                                1 -> {
-                                    Log.d(TAG, "Method 1 failed, trying Method 2")
-                                    try {
-                                        mp.reset()
-                                        mp.setDataSource(context, Uri.parse(attempt.url))
-                                        mp.prepareAsync()
-                                        return@setOnErrorListener true
-                                    } catch (e: Exception) {
-                                        Log.w(TAG, "Method 2 setup failed: ${e.message}")
-                                        attempt.currentMethod++
-                                    }
-                                }
-                                2 -> {
-                                    Log.d(TAG, "Method 2 failed, trying Method 3 (downloading)")
-                                    try {
-                                        mp.reset()
-                                        CoroutineScope(continuation.context).launch(Dispatchers.IO) {
-                                            var tempFile: File? = null
-                                            try {
-                                                tempFile = downloadAudioFile(attempt.url)
-                                                
-                                                withContext(Dispatchers.Main) {
-                                                    try {
-                                                        if (!continuation.isCancelled && mp === mediaPlayer) {
-                                                            mp.setDataSource(tempFile.absolutePath)
-                                                            mp.prepareAsync()
-                                                        } else {
-                                                            mp.release()
-                                                            mediaPlayer = null
-                                                        }
-                                                    } catch (e: Exception) {
-                                                        Log.e(TAG, "Method 3 setup failed: ${e.message}")
-                                                        mp.release()
-                                                        mediaPlayer = null
-                                                        if (continuation.isActive) {
-                                                            continuation.resumeWithException(Exception("All playback methods failed: ${e.message}"))
-                                                        }
-                                                    }
-                                                }
-                                            } catch (e: Exception) {
-                                                tempFile?.let { file ->
-                                                    try {
-                                                        if (file.exists()) {
-                                                            deleteTempFile(file.absolutePath)
-                                                        }
-                                                    } catch (deleteError: Exception) {
-                                                        Log.w(TAG, "Error deleting temp file", deleteError)
-                                                    }
-                                                }
-                                                
-                                                withContext(Dispatchers.Main) {
-                                                    mp.release()
-                                                    mediaPlayer = null
-                                                    if (continuation.isActive) {
-                                                        continuation.resumeWithException(Exception("Failed to download audio: ${e.message}"))
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        return@setOnErrorListener true
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "Method 3 setup failed: ${e.message}")
-                                    }
-                                }
-                            }
-                            
                             mp.release()
                             mediaPlayer = null
-                            currentTempFile?.let { deleteTempFile(it) }
+                            // Remove from cache on error, but don't delete file immediately
+                            // (it might be useful for debugging)
+                            val cacheKey = "${word}_$language"
+                            audioCache.remove(cacheKey)
                             
-                            val error = Exception("All playback methods failed - what: $what, extra: $extra")
+                            val error = Exception("Playback failed - what: $what, extra: $extra")
                             if (continuation.isActive) {
                                 continuation.resumeWithException(error)
                             }
@@ -370,82 +377,26 @@ class PronunciationService private constructor(context: Context) {
                     }
                     
                     mediaPlayer = player
+                    currentTempFile = tempFile.absolutePath
                     
-                    try {
-                        player.setDataSource(url)
-                        player.prepareAsync()
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Method 1 failed synchronously: ${e.message}, trying Method 2")
-                        attempt.currentMethod = 1
-                        
-                        try {
-                            player.reset()
-                            player.setDataSource(context, Uri.parse(url))
-                            player.prepareAsync()
-                        } catch (e2: Exception) {
-                            Log.w(TAG, "Method 2 failed synchronously: ${e2.message}, trying Method 3")
-                            attempt.currentMethod = 2
-                            
+                    // Use the file we already have (either from cache or downloaded)
+                    CoroutineScope(continuation.context).launch(Dispatchers.IO) {
+                        withContext(Dispatchers.Main) {
                             try {
-                                player.reset()
-                                CoroutineScope(continuation.context).launch(Dispatchers.IO) {
-                                    var tempFile: File? = null
-                                    try {
-                                        tempFile = downloadAudioFile(url)
-                                        
-                                        withContext(Dispatchers.Main) {
-                                            try {
-                                                if (!continuation.isCancelled && player === mediaPlayer) {
-                                                    player.setDataSource(tempFile.absolutePath)
-                                                    player.prepareAsync()
-                                                } else {
-                                                    player.release()
-                                                    mediaPlayer = null
-                                                }
-                                            } catch (e3: Exception) {
-                                                Log.e(TAG, "Method 3 setup failed: ${e3.message}", e3)
-                                                player.release()
-                                                mediaPlayer = null
-                                                tempFile?.let { file ->
-                                                    try {
-                                                        if (file.exists()) {
-                                                            deleteTempFile(file.absolutePath)
-                                                        }
-                                                    } catch (deleteError: Exception) {
-                                                        Log.w(TAG, "Error deleting temp file", deleteError)
-                                                    }
-                                                }
-                                                if (continuation.isActive) {
-                                                    continuation.resumeWithException(Exception("Failed to play pronunciation: ${e3.message}"))
-                                                }
-                                            }
-                                        }
-                                    } catch (e3: Exception) {
-                                        tempFile?.let { file ->
-                                            try {
-                                                if (file.exists()) {
-                                                    deleteTempFile(file.absolutePath)
-                                                }
-                                            } catch (deleteError: Exception) {
-                                                Log.w(TAG, "Error deleting temp file", deleteError)
-                                            }
-                                        }
-                                        
-                                        withContext(Dispatchers.Main) {
-                                            player.release()
-                                            mediaPlayer = null
-                                            if (continuation.isActive) {
-                                                continuation.resumeWithException(Exception("Failed to download audio: ${e3.message}"))
-                                            }
-                                        }
-                                    }
+                                if (!continuation.isCancelled && player === mediaPlayer) {
+                                    player.setDataSource(tempFile.absolutePath)
+                                    player.prepareAsync()
+                                } else {
+                                    player.release()
+                                    mediaPlayer = null
                                 }
-                            } catch (e3: Exception) {
-                                Log.e(TAG, "Method 3 setup failed synchronously: ${e3.message}", e3)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to set data source: ${e.message}", e)
                                 player.release()
                                 mediaPlayer = null
-                                continuation.resumeWithException(Exception("Failed to play pronunciation: ${e3.message}"))
-                                return@suspendCancellableCoroutine
+                                if (continuation.isActive) {
+                                    continuation.resumeWithException(Exception("Failed to play pronunciation: ${e.message}"))
+                                }
                             }
                         }
                     }
@@ -456,7 +407,9 @@ class PronunciationService private constructor(context: Context) {
                 Log.e(TAG, "Failed to play pronunciation for word: '$word'", e)
                 mediaPlayer?.release()
                 mediaPlayer = null
-                currentTempFile?.let { deleteTempFile(it) }
+                // Remove from cache on error
+                val cacheKey = "${word}_$language"
+                audioCache.remove(cacheKey)
                 
                 Result.failure(e)
             }
@@ -492,6 +445,20 @@ class PronunciationService private constructor(context: Context) {
                 val filesToDelete = tempFiles.keys.toList()
                 filesToDelete.forEach { deleteTempFile(it) }
                 
+                // Clear audio cache
+                val cacheFilesToDelete = audioCache.values.toList()
+                cacheFilesToDelete.forEach { filePath ->
+                    try {
+                        val file = File(filePath)
+                        if (file.exists() && file.delete()) {
+                            Log.d(TAG, "Cleaned up cached audio file on shutdown: $filePath")
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to delete cached audio file on shutdown: $filePath", e)
+                    }
+                }
+                audioCache.clear()
+                
                 val cacheDir = context.cacheDir
                 if (cacheDir.exists()) {
                     val files = cacheDir.listFiles { file ->
@@ -508,8 +475,8 @@ class PronunciationService private constructor(context: Context) {
                     }
                 }
                 
-                if (filesToDelete.isNotEmpty()) {
-                    Log.d(TAG, "Cleaned up ${filesToDelete.size} temp files on shutdown")
+                if (filesToDelete.isNotEmpty() || cacheFilesToDelete.isNotEmpty()) {
+                    Log.d(TAG, "Cleaned up ${filesToDelete.size} temp files and ${cacheFilesToDelete.size} cached audio files on shutdown")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error during shutdown cleanup", e)

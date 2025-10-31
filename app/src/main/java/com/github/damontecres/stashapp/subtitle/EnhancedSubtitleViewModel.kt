@@ -241,6 +241,16 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
             val context = _currentCue.value?.text ?: ""
             val language = _detectedLanguage.value
             
+            // Preload pronunciation audio file in background when dictionary dialog opens
+            pronunciationService?.let { service ->
+                launch {
+                    service.preloadPronunciation(word, language)
+                        .onFailure { error ->
+                            Log.w(TAG, "Failed to preload pronunciation for word: '$word'", error)
+                        }
+                }
+            }
+            
             val entry = dictionaryService?.lookup(word, language, context)
             _dictionaryEntry.value = entry
             _isLoadingDictionary.value = false
