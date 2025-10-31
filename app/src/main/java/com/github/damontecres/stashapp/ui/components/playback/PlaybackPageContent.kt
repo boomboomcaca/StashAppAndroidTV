@@ -1159,6 +1159,8 @@ class PlaybackKeyHandler(
                 if (!player.isPlaying) {
                     player.play()
                 }
+                // Exit word selection mode when seeking to previous subtitle
+                enhancedSubtitleViewModel?.exitWordNavigationMode()
                 // Don't show controls when enhanced subtitles are enabled
             }
         } else {
@@ -1180,6 +1182,8 @@ class PlaybackKeyHandler(
                         if (!player.isPlaying) {
                             player.play()
                         }
+                        // Exit word selection mode when replaying current subtitle
+                        enhancedSubtitleViewModel?.exitWordNavigationMode()
                         // Don't show controls when enhanced subtitles are enabled
                     }
                     lastUpArrowPress = 0L
@@ -1298,6 +1302,8 @@ class PlaybackKeyHandler(
                 if (!player.isPlaying) {
                     player.play()
                 }
+                // Exit word selection mode when seeking to next subtitle
+                enhancedSubtitleViewModel?.exitWordNavigationMode()
                 // Do not show control bar on double down when enhanced subtitles are enabled
                 if (!enhancedSubtitlesEnabled) {
                     controllerViewState.showControls()
@@ -1332,26 +1338,31 @@ class PlaybackKeyHandler(
             if (it.type == KeyEventType.KeyUp) {
                 Log.d("PlaybackPageContent", "OK/Enter key pressed: enhancedSubtitlesEnabled=$enhancedSubtitlesEnabled, enhancedSubtitleViewModel=${enhancedSubtitleViewModel != null}")
                 
-                // If enhanced subtitles auto-paused the player, a single OK/Enter should resume playback
-                if (enhancedSubtitlesEnabled && enhancedSubtitleViewModel != null &&
-                    enhancedSubtitleViewModel.isAutoPaused.value
-                ) {
-                    Log.d("PlaybackPageContent", "OK/Enter: auto-paused, resuming playback")
-                    val seconds = (player.currentPosition / 1000.0).coerceAtLeast(0.0)
-                    enhancedSubtitleViewModel.notifyUserResumed(seconds)
-                    player.play()
-                    return true
-                }
-                // Enhanced subtitle word navigation mode takes priority
+                // Enhanced subtitle word selection takes priority
+                // If there's a selected word, lookup it first (even when auto-paused)
                 if (enhancedSubtitlesEnabled && enhancedSubtitleViewModel != null) {
+                    val selectedWordIndex = enhancedSubtitleViewModel.selectedWordIndex.value
                     val isInWordNavMode = enhancedSubtitleViewModel.isInWordNavigationMode.value
-                    Log.d("PlaybackPageContent", "OK/Enter: isInWordNavigationMode=$isInWordNavMode")
-                    if (isInWordNavMode) {
-                        // Word navigation mode: lookup selected word
+                    Log.d("PlaybackPageContent", "OK/Enter: selectedWordIndex=$selectedWordIndex, isInWordNavigationMode=$isInWordNavMode")
+                    
+                    // If there's a selected word (has valid index), lookup it
+                    if (selectedWordIndex >= 0 || isInWordNavMode) {
                         Log.d("PlaybackPageContent", "OK/Enter: calling selectCurrentWord()")
                         enhancedSubtitleViewModel.selectCurrentWord()
                         return true
                     }
+                }
+                
+                // If enhanced subtitles auto-paused the player and no word is selected,
+                // a single OK/Enter should resume playback
+                if (enhancedSubtitlesEnabled && enhancedSubtitleViewModel != null &&
+                    enhancedSubtitleViewModel.isAutoPaused.value
+                ) {
+                    Log.d("PlaybackPageContent", "OK/Enter: auto-paused, no word selected, resuming playback")
+                    val seconds = (player.currentPosition / 1000.0).coerceAtLeast(0.0)
+                    enhancedSubtitleViewModel.notifyUserResumed(seconds)
+                    player.play()
+                    return true
                 }
                 // Normal behavior: play/pause toggle
                 // This works whether enhanced subtitles are enabled or not

@@ -423,15 +423,16 @@ private fun DictionaryDialog(
     onPlayPronunciation: () -> Unit,
     onToggleFavorite: () -> Unit
 ) {
-    val focusRequester = remember { FocusRequester() }
+    val favoriteFocusRequester = remember { FocusRequester() }
     
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        // Request focus when dialog is shown - critical for Android TV
+        // Request focus on favorite button when dialog is shown - critical for Android TV
+        // This allows immediate navigation with D-pad keys without needing to click OK first
         LaunchedEffect(Unit) {
-            focusRequester.tryRequestFocus()
+            favoriteFocusRequester.tryRequestFocus()
         }
         
         // Container: dark rounded panel matching screenshot style
@@ -451,8 +452,6 @@ private fun DictionaryDialog(
                     .fillMaxSize()
                     .verticalScroll(scrollState)
                     .padding(horizontal = 28.dp, vertical = 22.dp)
-                    .focusRequester(focusRequester)
-                    .focusable()
             ) {
                 // Title with favorite on the right
                 Row(
@@ -476,6 +475,7 @@ private fun DictionaryDialog(
                     }
                     Box(
                         modifier = Modifier
+                            .focusRequester(favoriteFocusRequester)
                             .background(
                                 color = favoriteBgColor,
                                 shape = RoundedCornerShape(8.dp)
