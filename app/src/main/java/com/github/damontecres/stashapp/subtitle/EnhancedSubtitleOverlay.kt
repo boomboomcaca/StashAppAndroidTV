@@ -15,10 +15,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -441,31 +443,33 @@ private fun DictionaryDialog(
             modifier = Modifier
                 .fillMaxWidth(0.9f)
                 .widthIn(max = 900.dp)
-                .fillMaxHeight(0.9f)
+                .wrapContentHeight()
+                .heightIn(max = 900.dp)
                 .clip(RoundedCornerShape(16.dp))
                 .background(Color(0xFF2C3E50))
         ) {
-            
-
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
+                    .wrapContentHeight()
+                    .heightIn(max = 900.dp)
                     .verticalScroll(scrollState)
-                    .padding(horizontal = 28.dp, vertical = 22.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
                 // Title with favorite on the right
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Box(
+                    modifier = Modifier.fillMaxWidth()
                 ) {
+                    // Centered word
                     TvText(
                         text = word,
-                        fontSize = 40.sp,
+                        fontSize = 28.sp,
                         color = Color(0xFFF2F6FA),
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.align(Alignment.Center),
+                        textAlign = TextAlign.Center
                     )
-                    // Favorite star with focus styling
+                    // Favorite star positioned on the right
                     val favoriteInteractionSource = remember { MutableInteractionSource() }
                     val isFavoriteFocused by favoriteInteractionSource.collectIsFocusedAsState()
                     val favoriteBgColor = if (isFavoriteFocused) {
@@ -475,12 +479,13 @@ private fun DictionaryDialog(
                     }
                     Box(
                         modifier = Modifier
+                            .align(Alignment.CenterEnd)
                             .focusRequester(favoriteFocusRequester)
                             .background(
                                 color = favoriteBgColor,
                                 shape = RoundedCornerShape(8.dp)
                             )
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .padding(horizontal = 6.dp, vertical = 3.dp)
                             .handleDPadKeyEvents(
                                 onCenter = onToggleFavorite
                             )
@@ -493,7 +498,7 @@ private fun DictionaryDialog(
                     ) {
                         TvText(
                             text = if (isFavorite) "★" else "☆",
-                            fontSize = 28.sp,
+                            fontSize = 24.sp,
                             color = Color(0xFFF2F6FA)
                         )
                     }
@@ -503,13 +508,14 @@ private fun DictionaryDialog(
                 entry?.let { e ->
                     val posText = e.definitions.firstOrNull()?.partOfSpeech ?: ""
                     Row(
-                        modifier = Modifier.padding(top = 12.dp, bottom = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier.padding(top = 6.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Box(
                             modifier = Modifier
                                 .background(Color(0xFF3A4A55), RoundedCornerShape(50))
-                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             TvText(text = posText.ifEmpty { "词性" }, color = Color(0xFFF2F6FA), fontSize = 18.sp)
                         }
@@ -528,7 +534,7 @@ private fun DictionaryDialog(
                                         color = pronunciationBgColor,
                                         shape = RoundedCornerShape(8.dp)
                                     )
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .padding(horizontal = 6.dp, vertical = 3.dp)
                                     .handleDPadKeyEvents(
                                         onCenter = onPlayPronunciation
                                     )
@@ -555,7 +561,7 @@ private fun DictionaryDialog(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(32.dp),
+                                .padding(24.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             CircularProgressIndicator(color = Color(0xFFF2F6FA))
@@ -568,16 +574,16 @@ private fun DictionaryDialog(
                                     text = definition.meaning,
                                     color = Color(0xFFF2F6FA),
                                     fontSize = 28.sp,
-                                    lineHeight = 40.sp,
-                                    modifier = Modifier.padding(vertical = 12.dp)
+                                    lineHeight = 34.sp,
+                                    modifier = Modifier.padding(vertical = 6.dp)
                                 )
                                 definition.examples.takeIf { it.isNotEmpty() }?.forEach { example ->
                                     TvText(
                                         text = example,
                                         color = Color(0xFFB9C7D3),
                                         fontSize = 20.sp,
-                                        lineHeight = 28.sp,
-                                        modifier = Modifier.padding(start = 8.dp, bottom = 6.dp)
+                                        lineHeight = 26.sp,
+                                        modifier = Modifier.padding(start = 6.dp, bottom = 4.dp, top = 2.dp)
                                     )
                                 }
                             }
