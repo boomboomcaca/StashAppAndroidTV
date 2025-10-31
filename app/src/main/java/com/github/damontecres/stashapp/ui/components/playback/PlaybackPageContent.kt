@@ -1042,6 +1042,24 @@ fun PlaybackPageContent(
             // Use tracked player position for subtitle synchronization
             val currentTimeSeconds = (playerPosition / 1000.0).coerceAtLeast(0.0)
             
+            // Monitor word navigation mode state and pause/resume playback accordingly
+            val isInWordNavigationMode by enhancedSubtitleViewModel.isInWordNavigationMode.collectAsState()
+            val wasPlayingBeforeWordNav = remember { mutableStateOf(false) }
+            LaunchedEffect(isInWordNavigationMode) {
+                if (isInWordNavigationMode) {
+                    // Entering word navigation mode: pause playback if playing
+                    wasPlayingBeforeWordNav.value = player.isPlaying
+                    if (player.isPlaying) {
+                        player.pause()
+                    }
+                } else {
+                    // Exiting word navigation mode: resume playback if it was playing before
+                    if (wasPlayingBeforeWordNav.value && !player.isPlaying) {
+                        player.play()
+                    }
+                }
+            }
+            
             com.github.damontecres.stashapp.subtitle.EnhancedSubtitleOverlay(
                 viewModel = enhancedSubtitleViewModel,
                 currentTimeSeconds = currentTimeSeconds,
@@ -1309,6 +1327,47 @@ class PlaybackKeyHandler(
         var result = true
         if (!controlsEnabled) {
             result = false
+        } else if (it.key == Key.DirectionCenter || it.key == Key.Enter || it.key == Key.NumPadEnter) {
+            // OK/Enter key: handle enhanced subtitle word selection or play/pause
+            if (it.type == KeyEventType.KeyUp) {
+                Log.d("PlaybackPageContent", "OK/Enter key pressed: enhancedSubtitlesEnabled=$enhancedSubtitlesEnabled, enhancedSubtitleViewModel=${enhancedSubtitleViewModel != null}")
+                
+                // If enhanced subtitles auto-paused the player, a single OK/Enter should resume playback
+                if (enhancedSubtitlesEnabled && enhancedSubtitleViewModel != null &&
+                    enhancedSubtitleViewModel.isAutoPaused.value
+                ) {
+                    Log.d("PlaybackPageContent", "OK/Enter: auto-paused, resuming playback")
+                    val seconds = (player.currentPosition / 1000.0).coerceAtLeast(0.0)
+                    enhancedSubtitleViewModel.notifyUserResumed(seconds)
+                    player.play()
+                    return true
+                }
+                // Enhanced subtitle word navigation mode takes priority
+                if (enhancedSubtitlesEnabled && enhancedSubtitleViewModel != null) {
+                    val isInWordNavMode = enhancedSubtitleViewModel.isInWordNavigationMode.value
+                    Log.d("PlaybackPageContent", "OK/Enter: isInWordNavigationMode=$isInWordNavMode")
+                    if (isInWordNavMode) {
+                        // Word navigation mode: lookup selected word
+                        Log.d("PlaybackPageContent", "OK/Enter: calling selectCurrentWord()")
+                        enhancedSubtitleViewModel.selectCurrentWord()
+                        return true
+                    }
+                }
+                // Normal behavior: play/pause toggle
+                // This works whether enhanced subtitles are enabled or not
+                Log.d("PlaybackPageContent", "OK/Enter: normal play/pause behavior")
+                if (player.isPlaying) {
+                    player.pause()
+                    // Don't show controls when enhanced subtitles are enabled
+                    if (!enhancedSubtitlesEnabled) {
+                        controllerViewState.showControls()
+                    }
+                } else {
+                    player.play()
+                }
+                return true
+            }
+            result = false
         } else if (isDpad(it)) {
             when (it.key) {
                 Key.DirectionLeft, Key.DirectionRight -> {
@@ -1375,39 +1434,6 @@ class PlaybackKeyHandler(
             } else {
                 result = false
             }
-        } else if (it.key == Key.Enter || it.key == Key.DirectionCenter) {
-            if (it.type == KeyEventType.KeyUp) {
-                // If enhanced subtitles auto-paused the player, a single OK/Enter should resume playback
-                if (enhancedSubtitlesEnabled && enhancedSubtitleViewModel != null &&
-                    enhancedSubtitleViewModel.isAutoPaused.value
-                ) {
-                    val seconds = (player.currentPosition / 1000.0).coerceAtLeast(0.0)
-                    enhancedSubtitleViewModel.notifyUserResumed(seconds)
-                    player.play()
-                    return true
-                }
-                // Enhanced subtitle word navigation mode takes priority
-                if (enhancedSubtitlesEnabled && enhancedSubtitleViewModel != null && 
-                    enhancedSubtitleViewModel.isInWordNavigationMode.value) {
-                    // Word navigation mode: lookup selected word
-                    enhancedSubtitleViewModel.selectCurrentWord()
-                    return true
-                } else {
-                    // Normal behavior: play/pause toggle
-                    // This works whether enhanced subtitles are enabled or not
-                    if (player.isPlaying) {
-                        player.pause()
-                        // Don't show controls when enhanced subtitles are enabled
-                        if (!enhancedSubtitlesEnabled) {
-                            controllerViewState.showControls()
-                        }
-                    } else {
-                        player.play()
-                    }
-                    return true
-                }
-            }
-            result = false
         } else if (it.key == Key.Back) {
             if (it.type == KeyEventType.KeyUp) {
                 // Enhanced subtitle word navigation mode takes priority

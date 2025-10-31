@@ -74,9 +74,9 @@ fun AddServer(
 
     val testButtonFocusRequester = remember { FocusRequester() }
 
-    var serverUrl by remember { mutableStateOf("") }
+    var serverUrl by remember { mutableStateOf("http://192.168.1.111:9999") }
     var username by remember { mutableStateOf("") }
-    var apiKey by remember { mutableStateOf<String?>(null) }
+    var apiKey by remember { mutableStateOf<String?>("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiJib29tIiwic3ViIjoiQVBJS2V5IiwiaWF0IjoxNzYxNjY5NDM4fQ.Kc5ELdmBhIPk01v-fReXHtPe61Q_t7fUXIogqFTdATk") }
     var showApiKey by remember { mutableStateOf(false) }
     var usePassword by remember { mutableStateOf(false) }
 

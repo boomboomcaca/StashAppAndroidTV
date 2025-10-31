@@ -222,15 +222,19 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
      * Handle word click/selection
      */
     fun selectWord(word: String?) {
+        Log.d(TAG, "selectWord: word='$word', currentSelectedWord=${_selectedWord.value}")
         viewModelScope.launch {
             _selectedWord.value = word
+            Log.d(TAG, "selectWord: _selectedWord set to '$word'")
             if (word == null) {
                 _dictionaryEntry.value = null
                 _isLoadingDictionary.value = false
+                Log.d(TAG, "selectWord: word is null, clearing dictionary")
                 return@launch
             }
             
             _isLoadingDictionary.value = true
+            Log.d(TAG, "selectWord: looking up word='$word'")
             
             val context = _currentCue.value?.text ?: ""
             val language = _detectedLanguage.value
@@ -238,6 +242,7 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
             val entry = dictionaryService?.lookup(word, language, context)
             _dictionaryEntry.value = entry
             _isLoadingDictionary.value = false
+            Log.d(TAG, "selectWord: lookup completed, entry=${entry != null}, isLoading=false")
         }
     }
     
@@ -340,7 +345,10 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
     
     fun navigateToNextWord() {
         val segments = _wordSegments.value
-        if (segments.isEmpty()) return
+        if (segments.isEmpty()) {
+            Log.d(TAG, "navigateToNextWord: segments empty")
+            return
+        }
         
         val currentIndex = _selectedWordIndex.value
         
@@ -348,18 +356,24 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
         if (currentIndex < 0) {
             _isInWordNavigationMode.value = true
             _selectedWordIndex.value = 0
+            Log.d(TAG, "navigateToNextWord: entering word nav mode, index=0")
         } else if (currentIndex < segments.size - 1) {
             // Move to next word
             _selectedWordIndex.value = currentIndex + 1
+            Log.d(TAG, "navigateToNextWord: index ${currentIndex} -> ${currentIndex + 1}")
         } else {
             // At the end, cycle to the first word
             _selectedWordIndex.value = 0
+            Log.d(TAG, "navigateToNextWord: cycling to start, index -> 0")
         }
     }
     
     fun navigateToPreviousWord() {
         val segments = _wordSegments.value
-        if (segments.isEmpty()) return
+        if (segments.isEmpty()) {
+            Log.d(TAG, "navigateToPreviousWord: segments empty")
+            return
+        }
         
         val currentIndex = _selectedWordIndex.value
         
@@ -367,20 +381,28 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
         if (currentIndex < 0) {
             _isInWordNavigationMode.value = true
             _selectedWordIndex.value = segments.size - 1
+            Log.d(TAG, "navigateToPreviousWord: entering word nav mode, index=${segments.size - 1}")
         } else if (currentIndex > 0) {
             // Move to previous word
             _selectedWordIndex.value = currentIndex - 1
+            Log.d(TAG, "navigateToPreviousWord: index ${currentIndex} -> ${currentIndex - 1}")
         } else {
             // At the beginning, cycle to the last word
             _selectedWordIndex.value = segments.size - 1
+            Log.d(TAG, "navigateToPreviousWord: cycling to end, index -> ${segments.size - 1}")
         }
     }
     
     fun selectCurrentWord() {
         val segments = _wordSegments.value
         val index = _selectedWordIndex.value
+        Log.d(TAG, "selectCurrentWord: index=$index, segments.size=${segments.size}, isInWordNavMode=${_isInWordNavigationMode.value}")
         if (index >= 0 && index < segments.size) {
-            selectWord(segments[index].word)
+            val word = segments[index].word
+            Log.d(TAG, "selectCurrentWord: selecting word='$word' at index=$index")
+            selectWord(word)
+        } else {
+            Log.w(TAG, "selectCurrentWord: Invalid index=$index or segments empty (size=${segments.size})")
         }
     }
     

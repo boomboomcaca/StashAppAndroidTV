@@ -1,5 +1,6 @@
 package com.github.damontecres.stashapp.subtitle
 
+import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -47,6 +48,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.LocalContentColor
@@ -55,6 +59,7 @@ import androidx.tv.material3.Text as TvText
 import com.github.damontecres.stashapp.subtitle.EnhancedSubtitleViewModel
 import com.github.damontecres.stashapp.ui.compat.Button as CompatButton
 import com.github.damontecres.stashapp.ui.util.handleDPadKeyEvents
+import com.github.damontecres.stashapp.ui.tryRequestFocus
 
 /**
  * Enhanced Subtitle Overlay Component
@@ -105,8 +110,10 @@ fun EnhancedSubtitleOverlay(
     
     // Auto-pause when dictionary dialog opens (when a word is selected)
     androidx.compose.runtime.LaunchedEffect(selectedWord) {
+        Log.d("EnhancedSubtitleOverlay", "selectedWord changed: selectedWord='$selectedWord', isLoadingDictionary=$isLoadingDictionary")
         if (selectedWord != null) {
             // Word selected - pause player to show dictionary dialog
+            Log.d("EnhancedSubtitleOverlay", "Word selected, pausing player and showing dictionary dialog")
             onPausePlayer?.invoke()
         }
     }
@@ -181,16 +188,27 @@ fun EnhancedSubtitleOverlay(
         
         // Dictionary dialog
         selectedWord?.let { word ->
+            Log.d("EnhancedSubtitleOverlay", "Displaying DictionaryDialog for word='$word', entry=${dictionaryEntry != null}, isLoading=$isLoadingDictionary")
             DictionaryDialog(
                 word = word,
                 entry = dictionaryEntry,
                 isLoading = isLoadingDictionary,
                 detectedLanguage = detectedLanguage,
                 isFavorite = favorites.any { it.word == word && it.language == detectedLanguage },
-                onDismiss = { viewModel.selectWord(null) },
+                onDismiss = { 
+                    Log.d("EnhancedSubtitleOverlay", "DictionaryDialog dismissed")
+                    viewModel.selectWord(null) 
+                },
                 onPlayPronunciation = { viewModel.playPronunciation(word) },
                 onToggleFavorite = { viewModel.toggleFavorite(word) }
             )
+        }
+        
+        // Log when selectedWord is null but we're in word nav mode (for debugging)
+        if (selectedWord == null && isInWordNavMode) {
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                Log.d("EnhancedSubtitleOverlay", "selectedWord is null but isInWordNavMode=true, DictionaryDialog not displayed")
+            }
         }
     }
 }
@@ -405,10 +423,17 @@ private fun DictionaryDialog(
     onPlayPronunciation: () -> Unit,
     onToggleFavorite: () -> Unit
 ) {
+    val focusRequester = remember { FocusRequester() }
+    
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
+        // Request focus when dialog is shown - critical for Android TV
+        LaunchedEffect(Unit) {
+            focusRequester.tryRequestFocus()
+        }
+        
         // Container: dark rounded panel matching screenshot style
         val scrollState = rememberScrollState()
         Box(
@@ -426,6 +451,8 @@ private fun DictionaryDialog(
                     .fillMaxSize()
                     .verticalScroll(scrollState)
                     .padding(horizontal = 28.dp, vertical = 22.dp)
+                    .focusRequester(focusRequester)
+                    .focusable()
             ) {
                 // Title with favorite on the right
                 Row(
