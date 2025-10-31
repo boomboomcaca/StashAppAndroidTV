@@ -124,6 +124,8 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
                 null
             }
             dictionaryService = DictionaryService(apolloClient)
+            // Set server for pronunciation service
+            pronunciationService?.setServer(server)
         }
     }
     
