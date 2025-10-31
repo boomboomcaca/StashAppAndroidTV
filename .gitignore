@@ -12,6 +12,8 @@ local.properties
 
 # Log/OS Files
 *.log
+debug_log.txt
+*_log.txt
 
 # Android Studio generated files and folders
 captures/
