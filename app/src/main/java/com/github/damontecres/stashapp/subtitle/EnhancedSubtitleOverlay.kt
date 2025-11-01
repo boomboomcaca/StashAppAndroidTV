@@ -33,7 +33,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -100,6 +102,9 @@ fun EnhancedSubtitleOverlay(
         viewModel.loadSubtitles(subtitleUrl)
     }
     
+    // Track previous auto-paused state to detect when auto-pause is triggered
+    var previousAutoPaused by remember { mutableStateOf(false) }
+    
     // Update playback time
     androidx.compose.runtime.LaunchedEffect(currentTimeSeconds) {
         viewModel.updatePlaybackTime(currentTimeSeconds)
@@ -108,6 +113,16 @@ fun EnhancedSubtitleOverlay(
         if (viewModel.checkAutoPause(currentTimeSeconds)) {
             onPausePlayer?.invoke()
         }
+    }
+    
+    // Listen for auto-pause state changes and select last word when auto-pause is triggered
+    // Also watch wordSegments to ensure they're ready when auto-pause triggers
+    androidx.compose.runtime.LaunchedEffect(isAutoPaused, wordSegments) {
+        if (!previousAutoPaused && isAutoPaused && wordSegments.isNotEmpty()) {
+            Log.d("EnhancedSubtitleOverlay", "Auto-pause triggered, selecting last word (segments count: ${wordSegments.size})")
+            viewModel.enterWordNavigationModeWithLastWord()
+        }
+        previousAutoPaused = isAutoPaused
     }
     
     // Auto-pause when dictionary dialog opens (when a word is selected)
@@ -426,15 +441,21 @@ private fun DictionaryDialog(
     onToggleFavorite: () -> Unit
 ) {
     val favoriteFocusRequester = remember { FocusRequester() }
+    val pronunciationFocusRequester = remember { FocusRequester() }
+    val hasPronunciation = entry?.pronunciation != null
     
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        // Request focus on favorite button when dialog is shown - critical for Android TV
-        // This allows immediate navigation with D-pad keys without needing to click OK first
-        LaunchedEffect(Unit) {
-            favoriteFocusRequester.tryRequestFocus()
+        // Request focus on pronunciation element first if available, otherwise favorite button
+        // This allows immediate navigation with D-pad keys and pressing OK to play pronunciation
+        LaunchedEffect(hasPronunciation, isLoading) {
+            if (hasPronunciation && !isLoading) {
+                pronunciationFocusRequester.tryRequestFocus()
+            } else {
+                favoriteFocusRequester.tryRequestFocus()
+            }
         }
         
         // Container: dark rounded panel matching screenshot style
@@ -530,6 +551,7 @@ private fun DictionaryDialog(
                             }
                             Box(
                                 modifier = Modifier
+                                    .focusRequester(pronunciationFocusRequester)
                                     .background(
                                         color = pronunciationBgColor,
                                         shape = RoundedCornerShape(8.dp)

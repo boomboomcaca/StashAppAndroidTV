@@ -1451,7 +1451,16 @@ class PlaybackKeyHandler(
                 if (enhancedSubtitlesEnabled && enhancedSubtitleViewModel != null && 
                     enhancedSubtitleViewModel.isInWordNavigationMode.value) {
                     // Exit word navigation mode
+                    val wasAutoPaused = enhancedSubtitleViewModel.isAutoPaused.value
                     enhancedSubtitleViewModel.exitWordNavigationMode()
+                    
+                    // If was auto-paused, resume playback
+                    if (wasAutoPaused && !player.isPlaying) {
+                        Log.d("PlaybackPageContent", "Back key: exiting word nav mode, resuming playback from auto-pause")
+                        val seconds = (player.currentPosition / 1000.0).coerceAtLeast(0.0)
+                        enhancedSubtitleViewModel.notifyUserResumed(seconds)
+                        player.play()
+                    }
                     return true
                 } else if (controllerViewState.controlsVisible) {
                     // Hide control bar
