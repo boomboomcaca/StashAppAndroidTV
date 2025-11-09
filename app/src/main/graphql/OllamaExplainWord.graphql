@@ -1,0 +1,13 @@
+mutation OllamaExplainWord($input: OllamaExplainWordInput!) {
+  ollamaExplainWord(input: $input) {
+    word
+    pronunciation
+    definitions {
+      partOfSpeech
+      meaning
+      examples
+    }
+    etymology
+  }
+}
+

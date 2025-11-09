@@ -1,0 +1,16 @@
+query OllamaStatus {
+  ollamaStatus {
+    available
+    config {
+      baseUrl
+      model
+      timeout
+      enabled
+      fallbackToTraditionalDict
+      promptTemplate
+    }
+    models
+    version
+  }
+}
+

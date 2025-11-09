@@ -45,6 +45,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -683,6 +684,18 @@ fun PlaybackPageContent(
     val nextState = rememberNextButtonState(player)
     val seekBarState = rememberSeekBarState(player, scope)
 
+    // Track left/right key press state when control bar is hidden
+    var leftRightKeyPressed by remember { mutableStateOf(false) }
+    var seekProgressWhenKeyPressed by remember { mutableFloatStateOf(-1f) }
+    
+    // Calculate current seek progress for preview
+    var currentSeekProgress by remember { mutableFloatStateOf(-1f) }
+    LaunchedEffect(player.currentPosition, player.duration) {
+        if (player.duration > 0) {
+            currentSeekProgress = player.currentPosition.toFloat() / player.duration
+        }
+    }
+
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) {
         focusRequester.tryRequestFocus()
@@ -699,6 +712,12 @@ fun PlaybackPageContent(
                 updateSkipIndicator = updateSkipIndicator,
                 enhancedSubtitleViewModel = enhancedSubtitleViewModel,
                 enhancedSubtitlesEnabled = enhancedSubtitlesEnabled,
+                onLeftRightKeyStateChanged = { pressed ->
+                    leftRightKeyPressed = pressed
+                    if (pressed && player.duration > 0) {
+                        seekProgressWhenKeyPressed = player.currentPosition.toFloat() / player.duration
+                    }
+                },
             )
         }
     Box(
@@ -756,6 +775,39 @@ fun PlaybackPageContent(
                                 .fillMaxWidth(percent),
                     ) {}
                 }
+            }
+        }
+        
+        // Show preview when control bar is hidden and left/right keys are pressed
+        currentScene?.let { scene ->
+            val shouldShowPreview = !controllerViewState.controlsVisible && 
+                                    leftRightKeyPressed && 
+                                    !isMarkerPlaylist &&
+                                    currentSeekProgress >= 0 &&
+                                    player.duration > 0
+            if (shouldShowPreview) {
+                val previewImageUrl = scene.item.spriteUrl
+                val imageLoader = coil3.SingletonImageLoader.get(LocalContext.current)
+                val spriteImageLoadedState = spriteImageLoaded
+                val yOffsetDp = 180.dp + (if (spriteImageLoadedState) 160.dp else 24.dp)
+                val heightPx = with(LocalDensity.current) { yOffsetDp.toPx().toInt() }
+                
+                SeekPreviewImage(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .offsetByPercent(
+                            xPercentage = currentSeekProgress.coerceIn(0f, 1f),
+                            yOffset = heightPx,
+                        ),
+                    imageLoaded = spriteImageLoadedState,
+                    previewImageUrl = previewImageUrl,
+                    imageLoader = imageLoader,
+                    duration = player.duration,
+                    seekProgress = currentSeekProgress,
+                    videoWidth = scene.item.videoWidth,
+                    videoHeight = scene.item.videoHeight,
+                    placeHolder = null,
+                )
             }
         }
 
@@ -1125,6 +1177,7 @@ class PlaybackKeyHandler(
     private val updateSkipIndicator: (Long) -> Unit,
     private val enhancedSubtitleViewModel: EnhancedSubtitleViewModel? = null,
     private val enhancedSubtitlesEnabled: Boolean = false,
+    private val onLeftRightKeyStateChanged: ((Boolean) -> Unit)? = null,
 ) {
     // Double-click detection timing (400ms, same as stash-server frontend)
     private val doubleClickDelayMs = 400L
@@ -1206,6 +1259,8 @@ class PlaybackKeyHandler(
         
         if (controllerViewState.controlsVisible) {
             // Control bar visible: do not adjust progress here. Let focused UI (e.g., seek bar) handle left/right.
+            // Notify that key is not pressed (control bar handles it)
+            onLeftRightKeyStateChanged?.invoke(false)
             return false
         } else {
             // Control bar hidden: Enhanced subtitle word navigation
@@ -1219,12 +1274,15 @@ class PlaybackKeyHandler(
                         enhancedSubtitleViewModel.navigateToNextWord()
                     }
                     // Don't show control bar when navigating words
+                    onLeftRightKeyStateChanged?.invoke(false)
                 }
                 return true // Event handled
             } else {
                 // Default behavior: seek backward/forward on KeyDown
                 if (event.type == KeyEventType.KeyDown) {
                     if (skipWithLeftRight) {
+                        // Notify that key is pressed for preview
+                        onLeftRightKeyStateChanged?.invoke(true)
                         if (isLeft) {
                         updateSkipIndicator(-player.seekBackIncrement)
                         player.seekBack()
@@ -1234,6 +1292,9 @@ class PlaybackKeyHandler(
                         }
                         return true // Event handled
                     }
+                } else if (event.type == KeyEventType.KeyUp) {
+                    // Notify that key is released
+                    onLeftRightKeyStateChanged?.invoke(false)
                 }
                 return false // Let it propagate if not handled
             }

@@ -2,12 +2,14 @@ package com.github.damontecres.stashapp.subtitle
 
 import android.util.Log
 import com.apollographql.apollo.ApolloClient
+import com.apollographql.apollo.api.Optional
+import com.github.damontecres.stashapp.api.OllamaExplainWordMutation
+import com.github.damontecres.stashapp.api.type.OllamaExplainWordInput
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
  * Dictionary service for word lookups using Ollama backend
- * Note: Ollama functionality is not available in the current GraphQL schema
  */
 class DictionaryService(
     private val apolloClient: ApolloClient?
@@ -17,7 +19,6 @@ class DictionaryService(
     
     /**
      * Look up a word in the dictionary
-     * Note: This functionality is currently not available as the GraphQL mutation is not in the schema
      */
     suspend fun lookup(
         word: String,
@@ -34,9 +35,66 @@ class DictionaryService(
             // Check cache first
             cache[cacheKey]?.let { return@withContext it }
             
-            // Ollama functionality is not available in the current GraphQL schema
-            Log.w(TAG, "Dictionary lookup not available - Ollama mutation not in schema")
-            return@withContext createBasicEntry(word, language, "功能不可用")
+            try {
+                if (apolloClient == null) {
+                    Log.w(TAG, "ApolloClient is null, cannot lookup word")
+                    return@withContext createBasicEntry(word, language, "服务不可用")
+                }
+                
+                // Use GraphQL mutation to lookup word
+                val input = OllamaExplainWordInput(
+                    word = word,
+                    context = context,
+                    language = Optional.presentIfNotNull(language.takeIf { it.isNotEmpty() })
+                )
+                
+                val mutation = OllamaExplainWordMutation(input)
+                val result = apolloClient.mutation(mutation).execute()
+                
+                val response = result.data?.ollamaExplainWord
+                if (response != null) {
+                    val entry = DictionaryEntry(
+                        word = response.word,
+                        pronunciation = response.pronunciation,
+                        definitions = response.definitions.map { def ->
+                            DictionaryDefinition(
+                                partOfSpeech = def.partOfSpeech.ifEmpty { "unknown" },
+                                meaning = def.meaning,
+                                examples = def.examples
+                            )
+                        },
+                        etymology = response.etymology
+                    )
+                    
+                    // Cache the entry with size limit
+                    if (cache.size >= MAX_CACHE_SIZE) {
+                        val firstKey = cache.keys.firstOrNull()
+                        if (firstKey != null) {
+                            cache.remove(firstKey)
+                        }
+                    }
+                    cache[cacheKey] = entry
+                    
+                    Log.d(TAG, "Dictionary lookup successful for word: $word")
+                    return@withContext entry
+                } else {
+                    // Handle errors
+                    if (result.errors != null && result.errors!!.isNotEmpty()) {
+                        val errorMsg = result.errors!!.joinToString(", ") { it.message }
+                        Log.w(TAG, "Dictionary lookup errors for word: $word - $errorMsg")
+                        return@withContext createBasicEntry(word, language, "查询错误: $errorMsg")
+                    }
+                    if (result.exception != null) {
+                        Log.e(TAG, "Dictionary lookup exception for word: $word", result.exception)
+                        return@withContext createBasicEntry(word, language, "查词失败: ${result.exception!!.message}")
+                    }
+                    Log.w(TAG, "Dictionary lookup returned no data for word: $word")
+                    return@withContext createBasicEntry(word, language, "未找到释义")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Dictionary lookup failed for word: $word", e)
+                return@withContext createBasicEntry(word, language, "查词失败: ${e.message}")
+            }
         }
     }
     
