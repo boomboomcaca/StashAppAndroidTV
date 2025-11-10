@@ -58,6 +58,12 @@
                 android:resource="@xml/provider_paths" />
         </provider>
 
+        <provider
+            android:name="org.acra.attachment.AcraContentProvider"
+            android:authorities="${applicationId}.acra"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
         <!--        <receiver-->
         <!--            android:name=".UpdateBroadcastReceiver"-->
         <!--            android:exported="true">-->

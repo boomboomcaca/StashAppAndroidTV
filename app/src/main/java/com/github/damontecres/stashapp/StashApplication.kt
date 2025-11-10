@@ -1,6 +1,7 @@
 package com.github.damontecres.stashapp
 
 import android.app.Application
+import android.content.pm.PackageInfo
 import android.content.res.Resources
 import android.graphics.Typeface
 import android.os.Build
@@ -96,7 +97,10 @@ class StashApplication : Application() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 pkgInfo.longVersionCode
             } else {
-                pkgInfo.versionCode.toLong()
+                // Use reflection to access deprecated versionCode field
+                val versionCodeField = PackageInfo::class.java.getDeclaredField("versionCode")
+                val versionCode = versionCodeField.getInt(pkgInfo)
+                versionCode.toLong()
             }
         if (pkgInfo.versionName != currentVersion || newVersionCode != currentVersionCode) {
             Log.i(
@@ -133,7 +137,7 @@ class StashApplication : Application() {
             Room
                 .databaseBuilder(this, AppDatabase::class.java, dbName)
                 .addMigrations(MIGRATION_4_TO_5)
-                .fallbackToDestructiveMigration()
+                .fallbackToDestructiveMigration(dropAllTables = true)
                 .build()
     }
 
