@@ -46,13 +46,9 @@ class StashApolloCompilerPlugin : ApolloCompilerPlugin {
 
                         val newFileSpecs =
                             input.fileSpecs.map { file ->
-                                if (file.name.endsWith("FilterType") &&
-                                    file.name !in
-                                    setOf(
-                                        "FindFilterType",
-                                        "SavedFindFilterType",
-                                    ) ||
-                                    file.name.endsWith("CriterionInput")
+                                if (file.name.endsWith("FilterType") ||
+                                    file.name.endsWith("CriterionInput") ||
+                                    file.name.endsWith("FilterInput")
                                 ) {
                                     // Modify filter or filter input types
                                     handleFilterInput(file, stashFilterInterface)
@@ -80,6 +76,17 @@ class StashApolloCompilerPlugin : ApolloCompilerPlugin {
         val builder = file.toBuilder()
         builder.members.replaceAll { member ->
             if (member is TypeSpec) {
+                // Check if this type contains Any? fields (which can't be serialized at compile time)
+                val hasAnyField = member.propertySpecs.any { prop ->
+                    prop.type.toString().contains("Optional<kotlin.Any?>") || 
+                    prop.type.toString().contains("Optional<Any?>")
+                }
+                
+                // Skip adding @Serializable for types with Any? fields
+                if (hasAnyField) {
+                    return@replaceAll member
+                }
+                
                 // Mark as Serializable
                 val annotation =
                     if (member.name == "CustomFieldCriterionInput") {
@@ -96,23 +103,36 @@ class StashApolloCompilerPlugin : ApolloCompilerPlugin {
                         .addAnnotation(annotation)
                 if (member.name != "CustomFieldCriterionInput") {
                     typeBuilder.propertySpecs.replaceAll { prop ->
+                        var updatedProp = prop
+                        // Check if property type is Optional
                         if (prop.type is ParameterizedTypeName &&
                             (prop.type as ParameterizedTypeName).rawType.canonicalName == "com.apollographql.apollo.api.Optional"
                         ) {
-                            // If the property is an Optional (basically all of them), then add a Contextual annotation
-                            // This allows for runtime serialization, because the app defines a serializer for this class
-                            prop
+                            val typeArgs = (prop.type as ParameterizedTypeName).typeArguments
+                            val isAnyType = typeArgs.isNotEmpty() && 
+                                (typeArgs[0].toString() == "kotlin.Any?" || typeArgs[0].toString() == "Any?")
+                            
+                            // For all Optional types, add Contextual annotation
+                            // The SerializersModule will handle Optional<Any?> specially
+                            updatedProp = prop
                                 .toBuilder()
                                 .addAnnotation(Contextual::class)
                                 .build()
-                        } else {
-                            prop
+                        } else if (prop.type.toString() == "kotlin.Any?" || prop.type.toString() == "Any?") {
+                            // If the property type is directly Any?, add @Contextual
+                            updatedProp = prop
+                                .toBuilder()
+                                .addAnnotation(Contextual::class)
+                                .build()
                         }
+                        updatedProp
                     }
                 }
 
-                // If the type is a filter, add the interface
-                if (member.name!!.endsWith("FilterType")) {
+                // If the type is a filter, add the interface (but not for FindFilterType and SavedFindFilterType)
+                if (member.name!!.endsWith("FilterType") &&
+                    member.name !in setOf("FindFilterType", "SavedFindFilterType")
+                ) {
                     typeBuilder.addSuperinterface(stashFilterInterface)
                 }
 

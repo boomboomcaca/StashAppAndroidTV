@@ -7,17 +7,39 @@ import com.github.damontecres.stashapp.api.type.CriterionModifier
 import com.github.damontecres.stashapp.api.type.CustomFieldCriterionInput
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.descriptors.buildClassSerialDescriptor
 import kotlinx.serialization.descriptors.element
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.modules.SerializersModule
+import org.json.JSONArray
+import org.json.JSONObject
 
 val OptionalSerializersModule =
     SerializersModule {
-        contextual(Optional::class) { args -> OptionalSerializer(args[0]) }
+        contextual(Optional::class) { args -> 
+            // Special handling for Optional<Any?>
+            val typeArg = args.getOrNull(0)
+            if (typeArg != null) {
+                val typeArgStr = typeArg.toString()
+                // Check if the type argument is Any? or contains Any
+                if (typeArgStr == "kotlin.Any?" || typeArgStr == "Any?" || 
+                    typeArgStr.contains("Any") || typeArgStr.contains("kotlin.Any")) {
+                    OptionalAnySerializer()
+                } else {
+                    OptionalSerializer(args[0])
+                }
+            } else {
+                OptionalSerializer(args[0])
+            }
+        }
         contextual(CustomFieldCriterionInput::class) { _ -> CustomFieldCriterionInputSerializer() }
+        contextual(Any::class) { _ -> AnySerializer() }
     }
 
 /**
@@ -164,5 +186,88 @@ class CustomFieldCriterionInputSerializer : KSerializer<CustomFieldCriterionInpu
         private const val INT_TYPE = 1
         private const val DOUBLE_TYPE = 2
         private const val FLOAT_TYPE = 3
+    }
+}
+
+/**
+ * Special serializer for Optional<Any?> to handle Map/JSON types in GraphQL
+ * This is registered in SerializersModule to handle Optional<Any?> at runtime
+ */
+@OptIn(ExperimentalSerializationApi::class)
+class OptionalAnySerializer : KSerializer<Optional<Any?>> {
+    private val anySerializer = AnySerializer()
+    
+    override val descriptor: SerialDescriptor =
+        buildClassSerialDescriptor("Optional<Any?>") {
+            // Dynamic type, no fixed structure
+        }
+
+    override fun deserialize(decoder: Decoder): Optional<Any?> {
+        return if (decoder.decodeBoolean()) {
+            Optional.present(anySerializer.deserialize(decoder))
+        } else {
+            Optional.Absent
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: Optional<Any?>) {
+        if (value == Optional.Absent) {
+            encoder.encodeBoolean(false)
+        } else {
+            encoder.encodeBoolean(true)
+            anySerializer.serialize(encoder, value.getOrNull())
+        }
+    }
+}
+
+/**
+ * Serializer for Any type (used for Map/JSON types in GraphQL)
+ * Serializes as JSON using org.json for compatibility
+ */
+@OptIn(ExperimentalSerializationApi::class)
+class AnySerializer : KSerializer<Any?> {
+    override val descriptor: SerialDescriptor =
+        buildClassSerialDescriptor("Any") {
+            // Dynamic type, no fixed structure
+        }
+
+    override fun deserialize(decoder: Decoder): Any? {
+        // Decode as JSON string and parse
+        val jsonString = decoder.decodeString()
+        return try {
+            when {
+                jsonString.trimStart().startsWith("{") -> JSONObject(jsonString)
+                jsonString.trimStart().startsWith("[") -> JSONArray(jsonString)
+                else -> jsonString
+            }
+        } catch (e: Exception) {
+            jsonString // Fallback to string if parsing fails
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: Any?) {
+        when (value) {
+            null -> encoder.encodeNull()
+            is String -> encoder.encodeString(value)
+            is Number -> encoder.encodeString(value.toString())
+            is Boolean -> encoder.encodeString(value.toString())
+            is JSONObject -> encoder.encodeString(value.toString())
+            is JSONArray -> encoder.encodeString(value.toString())
+            is Map<*, *> -> {
+                // Convert Map to JSONObject
+                val jsonObj = JSONObject()
+                value.forEach { (k, v) ->
+                    jsonObj.put(k.toString(), v)
+                }
+                encoder.encodeString(jsonObj.toString())
+            }
+            is List<*> -> {
+                // Convert List to JSONArray
+                val jsonArray = JSONArray()
+                value.forEach { jsonArray.put(it) }
+                encoder.encodeString(jsonArray.toString())
+            }
+            else -> encoder.encodeString(value.toString())
+        }
     }
 }
