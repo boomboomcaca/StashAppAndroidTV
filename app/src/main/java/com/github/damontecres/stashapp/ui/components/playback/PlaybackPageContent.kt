@@ -1191,8 +1191,8 @@ class PlaybackKeyHandler(
     
     /**
      * Handle up arrow key with double-click detection:
-     * - Single click: Repeat current subtitle (seek to current subtitle start)
-     * - Double click (within 400ms): Seek to previous subtitle
+     * - Single click: Toggle play/pause and exit word selection mode
+     * - Double click (within 400ms): Seek to next subtitle and play, exiting word selection mode
      */
     private fun handleUpArrowKey() {
         val now = System.currentTimeMillis()
@@ -1203,18 +1203,17 @@ class PlaybackKeyHandler(
         upArrowHandler = null
         
         if (timeSinceLastPress < doubleClickDelayMs && timeSinceLastPress > 0) {
-            // Double click detected - seek to previous subtitle
+            // Double click detected - seek to next subtitle
             lastUpArrowPress = 0L
             val currentTimeSeconds = (player.currentPosition / 1000.0).coerceAtLeast(0.0)
-            val prevCueTime = enhancedSubtitleViewModel?.seekToPreviousCue(currentTimeSeconds)
-            if (prevCueTime != null) {
-                player.seekTo((prevCueTime * 1000).toLong())
+            val nextCueTime = enhancedSubtitleViewModel?.seekToNextCue(currentTimeSeconds)
+            if (nextCueTime != null) {
+                player.seekTo((nextCueTime * 1000).toLong())
                 if (!player.isPlaying) {
                     player.play()
                 }
-                // Exit word selection mode when seeking to previous subtitle
+                // Exit word selection mode when seeking to next subtitle
                 enhancedSubtitleViewModel?.exitWordNavigationMode()
-                // Don't show controls when enhanced subtitles are enabled
             }
         } else {
             // Single click - will trigger after delay if no second press
@@ -1227,18 +1226,13 @@ class PlaybackKeyHandler(
                 
                 // Only execute if this was a single press (not a double press)
                 if (timeSincePress >= doubleClickDelayMs && lastUpArrowPress != 0L) {
-                    // Single press - repeat current subtitle
-                    val currentTimeSeconds = (player.currentPosition / 1000.0).coerceAtLeast(0.0)
-                    val currentCueStartTime = enhancedSubtitleViewModel?.seekToCurrentCueStart(currentTimeSeconds)
-                    if (currentCueStartTime != null) {
-                        player.seekTo((currentCueStartTime * 1000).toLong())
-                        if (!player.isPlaying) {
-                            player.play()
-                        }
-                        // Exit word selection mode when replaying current subtitle
-                        enhancedSubtitleViewModel?.exitWordNavigationMode()
-                        // Don't show controls when enhanced subtitles are enabled
+                    // Single press - toggle play/pause and exit word selection mode
+                    if (player.isPlaying) {
+                        player.pause()
+                    } else {
+                        player.play()
                     }
+                    enhancedSubtitleViewModel?.exitWordNavigationMode()
                     lastUpArrowPress = 0L
                 }
             }, doubleClickDelayMs)
@@ -1342,8 +1336,8 @@ class PlaybackKeyHandler(
     
     /**
      * Handle down arrow key with double-click detection:
-     * - Single click: Show control bar
-     * - Double click (within 400ms): Seek to next subtitle
+     * - Single click: Repeat current subtitle (seek to current subtitle start) and play, exiting word selection mode
+     * - Double click (within 400ms): Seek to previous subtitle and play, exiting word selection mode
      */
     private fun handleDownArrowKey() {
         val now = System.currentTimeMillis()
@@ -1354,21 +1348,17 @@ class PlaybackKeyHandler(
         downArrowHandler = null
         
         if (timeSinceLastPress < doubleClickDelayMs && timeSinceLastPress > 0) {
-            // Double click detected - seek to next subtitle
+            // Double click detected - seek to previous subtitle
             lastDownArrowPress = 0L
             val currentTimeSeconds = (player.currentPosition / 1000.0).coerceAtLeast(0.0)
-            val nextCueTime = enhancedSubtitleViewModel?.seekToNextCue(currentTimeSeconds)
-            if (nextCueTime != null) {
-                player.seekTo((nextCueTime * 1000).toLong())
+            val prevCueTime = enhancedSubtitleViewModel?.seekToPreviousCue(currentTimeSeconds)
+            if (prevCueTime != null) {
+                player.seekTo((prevCueTime * 1000).toLong())
                 if (!player.isPlaying) {
                     player.play()
                 }
-                // Exit word selection mode when seeking to next subtitle
+                // Exit word selection mode when seeking to previous subtitle
                 enhancedSubtitleViewModel?.exitWordNavigationMode()
-                // Do not show control bar on double down when enhanced subtitles are enabled
-                if (!enhancedSubtitlesEnabled) {
-                    controllerViewState.showControls()
-                }
             }
         } else {
             // Single click - will trigger after delay if no second press
@@ -1381,8 +1371,17 @@ class PlaybackKeyHandler(
                 
                 // Only execute if this was a single press (not a double press)
                 if (timeSincePress >= doubleClickDelayMs && lastDownArrowPress != 0L) {
-                    // Single press - show control bar
-                    controllerViewState.showControls()
+                    // Single press - repeat current subtitle and play
+                    val currentTimeSeconds = (player.currentPosition / 1000.0).coerceAtLeast(0.0)
+                    val currentCueStartTime = enhancedSubtitleViewModel?.seekToCurrentCueStart(currentTimeSeconds)
+                    if (currentCueStartTime != null) {
+                        player.seekTo((currentCueStartTime * 1000).toLong())
+                        if (!player.isPlaying) {
+                            player.play()
+                        }
+                        // Exit word selection mode when replaying current subtitle
+                        enhancedSubtitleViewModel?.exitWordNavigationMode()
+                    }
                     lastDownArrowPress = 0L
                 }
             }, doubleClickDelayMs)
@@ -1469,6 +1468,12 @@ class PlaybackKeyHandler(
                 // When controller is visible, let the control bar handle navigation for other keys
                 result = false
             }
+        } else if (it.key == Key.Menu) {
+            // Menu key: simply show the controls when hidden
+            if (it.type == KeyEventType.KeyUp) {
+                controllerViewState.showControls()
+            }
+            return true
         } else if (isMedia(it)) {
             // Media keys should only trigger on KeyUp to avoid multiple triggers
             if (it.type == KeyEventType.KeyUp) {
