@@ -811,13 +811,7 @@ fun PlaybackPageContent(
                 val spriteImageLoadedState = spriteImageLoaded
                 val yOffsetDp = 180.dp + (if (spriteImageLoadedState) 160.dp else 24.dp)
                 val heightPx = with(LocalDensity.current) { yOffsetDp.toPx().toInt() }
-                LaunchedEffect(shouldShowPreview, spriteImageLoadedState, currentSeekProgress) {
-                    Log.d(
-                        TAG,
-                        "SeekPreview show: scene=${scene.item.id}, loaded=$spriteImageLoadedState, progress=$currentSeekProgress, url=$previewImageUrl",
-                    )
-                }
-                
+
                 SeekPreviewImage(
                     modifier = Modifier
                         .align(Alignment.TopStart)
