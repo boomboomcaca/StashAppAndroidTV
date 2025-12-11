@@ -1248,10 +1248,14 @@ class PlaybackKeyHandler(
                 // Only execute if this was a single press (not a double press)
                 if (timeSincePress >= doubleClickDelayMs && lastUpArrowPress != 0L) {
                     // Single press - toggle play/pause and exit word selection mode
-                    if (player.isPlaying) {
+                    val wasPlaying = player.isPlaying
+                    if (wasPlaying) {
                         player.pause()
                     } else {
                         player.play()
+                        // Mark manual resume to suppress immediate auto-pause retrigger
+                        val seconds = (player.currentPosition / 1000.0).coerceAtLeast(0.0)
+                        enhancedSubtitleViewModel?.notifyUserResumed(seconds)
                     }
                     enhancedSubtitleViewModel?.exitWordNavigationMode()
                     lastUpArrowPress = 0L
