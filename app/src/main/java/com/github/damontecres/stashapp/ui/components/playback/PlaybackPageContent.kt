@@ -1350,7 +1350,22 @@ class PlaybackKeyHandler(
             if (enhancedSubtitlesEnabled && enhancedSubtitleViewModel != null) {
                 when (event.key) {
                     Key.DirectionUp -> {
-                        handleUpArrowKey()
+                        // If auto-paused, resume immediately without waiting for
+                        // double-click timeout to avoid feeling unresponsive.
+                        if (enhancedSubtitleViewModel.isAutoPaused.value) {
+                            val seconds = (player.currentPosition / 1000.0).coerceAtLeast(0.0)
+                            enhancedSubtitleViewModel.notifyUserResumed(seconds)
+                            player.play()
+                            enhancedSubtitleViewModel.exitWordNavigationMode()
+                            // Record current time for double-click detection
+                            // (don't set to 0L, which breaks double-click after auto-pause)
+                            val now = System.currentTimeMillis()
+                            lastUpArrowPress = now
+                            upArrowHandler?.removeCallbacksAndMessages(null)
+                            upArrowHandler = null
+                        } else {
+                            handleUpArrowKey()
+                        }
                         return
                     }
                     Key.DirectionDown -> {
@@ -1496,8 +1511,8 @@ class PlaybackKeyHandler(
                     } else {
                         // Control bar hidden: handle subtitle navigation or default behavior
                         handleUpDownArrowKey(it)
-                    return true
-                }
+                        return true
+                    }
                 }
                 else -> { /* Other DPad keys */ }
             }
