@@ -439,23 +439,27 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
     fun getCurrentCueIndex(currentTimeSeconds: Double): Int {
         val cues = _subtitles.value
         if (cues.isEmpty()) return -1
-        
-        // Find the current cue index
+
+        var lastBefore = -1
+
+        // Find current cue or track the nearest previous cue
         for (i in cues.indices) {
             val cue = cues[i]
-            if (currentTimeSeconds >= cue.startTime && currentTimeSeconds <= cue.endTime) {
-                return i
+            when {
+                currentTimeSeconds >= cue.startTime && currentTimeSeconds <= cue.endTime -> {
+                    return i
+                }
+                currentTimeSeconds > cue.endTime -> {
+                    lastBefore = i
+                }
+                currentTimeSeconds < cue.startTime -> {
+                    // Between cues: return the most recent previous cue (if any), otherwise the first
+                    return if (lastBefore >= 0) lastBefore else 0
+                }
             }
         }
-        
-        // If no current cue, find the nearest upcoming cue
-        for (i in cues.indices) {
-            if (currentTimeSeconds < cues[i].startTime) {
-                return i
-            }
-        }
-        
-        // If past all cues, return the last index
+
+        // Past all cues: return the last cue
         return cues.size - 1
     }
     
