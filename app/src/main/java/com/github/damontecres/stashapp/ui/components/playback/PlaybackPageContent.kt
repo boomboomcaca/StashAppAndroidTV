@@ -30,12 +30,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
@@ -71,6 +73,7 @@ import androidx.media3.common.util.Util
 import androidx.media3.exoplayer.ExoPlayer
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import com.github.damontecres.stashapp.subtitle.EnhancedSubtitleViewModel
 import androidx.media3.ui.SubtitleView
 import androidx.media3.ui.compose.PlayerSurface
@@ -258,6 +261,7 @@ class PlaybackViewModel : ViewModel() {
                         .scale(Scale.FILL)
                         .build()
                 val result = imageLoader.enqueue(request).job.await()
+                Log.d(TAG, "sprite preload done scene=${tag.item.id}, success=${result.image != null}, url=${tag.item.spriteUrl}")
                 spriteImageLoaded.value = result.image != null
             }
         }
@@ -686,14 +690,18 @@ fun PlaybackPageContent(
 
     // Track left/right key press state when control bar is hidden
     var leftRightKeyPressed by remember { mutableStateOf(false) }
-    var seekProgressWhenKeyPressed by remember { mutableFloatStateOf(-1f) }
-    
+    var lastPreviewTileIndex by remember { mutableIntStateOf(-1) }
+    var lastPreviewUpdateMs by remember { mutableLongStateOf(0L) }
+
     // Calculate current seek progress for preview
     var currentSeekProgress by remember { mutableFloatStateOf(-1f) }
-    LaunchedEffect(player.currentPosition, player.duration) {
-        if (player.duration > 0) {
-            currentSeekProgress = player.currentPosition.toFloat() / player.duration
-        }
+    LaunchedEffect(player) {
+        snapshotFlow { player.duration to player.currentPosition }
+            .collect { (duration, position) ->
+                if (duration > 0) {
+                    currentSeekProgress = (position.toFloat() / duration).coerceIn(0f, 1f)
+                }
+            }
     }
 
     val focusRequester = remember { FocusRequester() }
@@ -714,8 +722,20 @@ fun PlaybackPageContent(
                 enhancedSubtitlesEnabled = enhancedSubtitlesEnabled,
                 onLeftRightKeyStateChanged = { pressed ->
                     leftRightKeyPressed = pressed
-                    if (pressed && player.duration > 0) {
-                        seekProgressWhenKeyPressed = player.currentPosition.toFloat() / player.duration
+                },
+                onPreviewProgressChange = { progress ->
+                    val tileCount = 81 // 9x9 sprite grid
+                    val clampedProgress = progress.coerceIn(0f, 1f)
+                    val tileIndex = (clampedProgress * tileCount).toInt().coerceIn(0, tileCount - 1)
+                    val now = SystemClock.uptimeMillis()
+                    val timeOk = now - lastPreviewUpdateMs >= 300L
+                    val tileOk = tileIndex != lastPreviewTileIndex
+                    // Require both: reduce churn while still moving tile forward
+                    if (timeOk && tileOk) {
+                        lastPreviewTileIndex = tileIndex
+                        lastPreviewUpdateMs = now
+                        Log.d(TAG, "preview progress update (left/right): progress=$clampedProgress duration=${player.duration} pos=${player.currentPosition} tile=$tileIndex")
+                        currentSeekProgress = clampedProgress
                     }
                 },
             )
@@ -791,6 +811,12 @@ fun PlaybackPageContent(
                 val spriteImageLoadedState = spriteImageLoaded
                 val yOffsetDp = 180.dp + (if (spriteImageLoadedState) 160.dp else 24.dp)
                 val heightPx = with(LocalDensity.current) { yOffsetDp.toPx().toInt() }
+                LaunchedEffect(shouldShowPreview, spriteImageLoadedState, currentSeekProgress) {
+                    Log.d(
+                        TAG,
+                        "SeekPreview show: scene=${scene.item.id}, loaded=$spriteImageLoadedState, progress=$currentSeekProgress, url=$previewImageUrl",
+                    )
+                }
                 
                 SeekPreviewImage(
                     modifier = Modifier
@@ -806,7 +832,7 @@ fun PlaybackPageContent(
                     seekProgress = currentSeekProgress,
                     videoWidth = scene.item.videoWidth,
                     videoHeight = scene.item.videoHeight,
-                    placeHolder = null,
+                    placeHolder = ColorPainter(Color(0xFF1E1E1E)),
                 )
             }
         }
@@ -1178,6 +1204,7 @@ class PlaybackKeyHandler(
     private val enhancedSubtitleViewModel: EnhancedSubtitleViewModel? = null,
     private val enhancedSubtitlesEnabled: Boolean = false,
     private val onLeftRightKeyStateChanged: ((Boolean) -> Unit)? = null,
+    private val onPreviewProgressChange: ((Float) -> Unit)? = null,
 ) {
     // Double-click detection timing (400ms, same as stash-server frontend)
     private val doubleClickDelayMs = 400L
@@ -1275,14 +1302,31 @@ class PlaybackKeyHandler(
                 // Default behavior: seek backward/forward on KeyDown
                 if (event.type == KeyEventType.KeyDown) {
                     if (skipWithLeftRight) {
+                        val duration = player.duration.takeIf { it > 0 } ?: 0L
                         // Notify that key is pressed for preview
                         onLeftRightKeyStateChanged?.invoke(true)
+                        if (duration > 0) {
+                            val delta =
+                                if (isLeft) {
+                                    -player.seekBackIncrement
+                                } else {
+                                    player.seekForwardIncrement
+                                }
+                            val targetPosition =
+                                (player.currentPosition + delta).coerceIn(0, duration)
+                            val progress = targetPosition.toFloat() / duration.toFloat()
+                            Log.d(
+                                TAG,
+                                "handleLeftRight preview: isLeft=$isLeft, duration=$duration, delta=$delta, target=$targetPosition, progress=$progress",
+                            )
+                            onPreviewProgressChange?.invoke(progress)
+                        }
                         if (isLeft) {
-                        updateSkipIndicator(-player.seekBackIncrement)
-                        player.seekBack()
+                            updateSkipIndicator(-player.seekBackIncrement)
+                            player.seekBack()
                         } else {
-                        player.seekForward()
-                        updateSkipIndicator(player.seekForwardIncrement)
+                            player.seekForward()
+                            updateSkipIndicator(player.seekForwardIncrement)
                         }
                         return true // Event handled
                     }

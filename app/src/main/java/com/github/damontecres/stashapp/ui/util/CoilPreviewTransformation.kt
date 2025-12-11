@@ -1,6 +1,7 @@
 package com.github.damontecres.stashapp.ui.util
 
 import android.graphics.Bitmap
+import android.util.Log
 import androidx.core.graphics.scale
 import coil3.size.Size
 import coil3.size.pxOrElse
@@ -32,7 +33,10 @@ class CoilPreviewTransformation(
     ): Bitmap {
         val width = input.width / MAX_COLUMNS
         val height = input.height / MAX_LINES
-//        Log.d(TAG, "input.width=${input.width}, input.height=${input.height}, width=$width, height=$height, size=$size")
+        Log.d(
+            TAG,
+            "transform: pos=($x,$y), input=${input.width}x${input.height}, tile=${width}x$height, target=${size.width}x${size.height}, req=${targetWidth}x$targetHeight",
+        )
         return Bitmap
             .createBitmap(input, x * width, y * height, width, height)
             .scale(size.width.pxOrElse { targetWidth }, size.height.pxOrElse { targetHeight })

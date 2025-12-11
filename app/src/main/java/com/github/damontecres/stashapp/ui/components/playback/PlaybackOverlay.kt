@@ -37,6 +37,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
@@ -416,7 +417,7 @@ fun PlaybackOverlay(
                 seekProgress = seekProgress,
                 videoWidth = scene.videoWidth,
                 videoHeight = scene.videoHeight,
-                placeHolder = seekPreviewPlaceholder,
+                placeHolder = seekPreviewPlaceholder ?: ColorPainter(Color(0xFF1E1E1E)),
             )
         }
     }
