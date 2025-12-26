@@ -371,7 +371,7 @@ fun LeftPlaybackButtons(
     }
 }
 
-private val speedOptions = listOf(".25", ".5", ".75", "1.0", "1.25", "1.5", "2.0")
+private val speedOptions = listOf(".25", ".5", ".75", ".8", ".9", "1.0", "1.25", "1.5", "2.0")
 
 @Composable
 fun RightPlaybackButtons(
