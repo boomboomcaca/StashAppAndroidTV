@@ -30,6 +30,7 @@ import com.github.damontecres.stashapp.util.Release
 import com.github.damontecres.stashapp.util.getDestination
 import com.github.damontecres.stashapp.util.putDestination
 import com.github.damontecres.stashapp.util.toLongMilliseconds
+import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
 import java.util.concurrent.atomic.AtomicLong
 
@@ -85,7 +86,7 @@ sealed class Destination(
 
     @Serializable
     data class Slideshow(
-        val filterArgs: FilterArgs,
+        @Contextual val filterArgs: FilterArgs,
         val position: Int,
         val automatic: Boolean,
     ) : Destination(true) {
@@ -94,7 +95,7 @@ sealed class Destination(
 
     @Serializable
     data class Filter(
-        val filterArgs: FilterArgs,
+        @Contextual val filterArgs: FilterArgs,
         val scrollToNextPage: Boolean = false,
     ) : Destination() {
         override fun toString(): String = "Filter(destId=$destId, dataType=${filterArgs.dataType}, scrollToNextPage=$scrollToNextPage)"
@@ -102,7 +103,7 @@ sealed class Destination(
 
     @Serializable
     data class Playlist(
-        val filterArgs: FilterArgs,
+        @Contextual val filterArgs: FilterArgs,
         val position: Int,
         val duration: Long? = null,
     ) : Destination(true) {
@@ -145,7 +146,7 @@ sealed class Destination(
     @Serializable
     data class CreateFilter(
         val dataType: DataType,
-        val startingFilter: FilterArgs?,
+        @Contextual val startingFilter: FilterArgs?,
     ) : Destination(true, false) {
         override fun toString(): String = "CreateFilter(destId=$destId, dataType=$dataType)"
     }

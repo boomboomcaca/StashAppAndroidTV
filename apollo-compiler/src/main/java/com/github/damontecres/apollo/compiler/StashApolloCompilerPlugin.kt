@@ -47,18 +47,15 @@ class StashApolloCompilerPlugin : ApolloCompilerPlugin {
                         val newFileSpecs =
                             input.fileSpecs.map { file ->
                                 if (
-                                    (
-                                        file.name.endsWith("FilterType") &&
-                                            file.name !in
-                                            setOf(
-                                                "FindFilterType",
-                                                "SavedFindFilterType",
-                                            )
-                                    ) ||
-                                    file.name.endsWith("CriterionInput")
+                                    file.name.endsWith("FilterType") &&
+                                    file.name !in
+                                    setOf(
+                                        "FindFilterType",
+                                        "SavedFindFilterType",
+                                    )
                                 ) {
-                                    // Modify filter or filter input types
-                                    handleFilterInput(file, stashFilterInterface)
+                                    // Modify filter types only (not CriterionInput to avoid serialization issues)
+                                    handleFilterInput(file, stashFilterInterface, addSerializable = false)
                                 } else if (file.name.endsWith("Data")) {
                                     // Modify data types
                                     // Note that fragments for data types by convention are suffixed with "Data"
@@ -79,37 +76,38 @@ class StashApolloCompilerPlugin : ApolloCompilerPlugin {
     private fun handleFilterInput(
         file: FileSpec,
         stashFilterInterface: ClassName,
+        addSerializable: Boolean = true,
     ): FileSpec {
         val builder = file.toBuilder()
         builder.members.replaceAll { member ->
             if (member is TypeSpec) {
-                // Mark as Serializable
-                val annotation =
-                    if (member.name == "CustomFieldCriterionInput") {
-                        AnnotationSpec
-                            .builder(Serializable::class)
-                            .addMember("with = com.github.damontecres.stashapp.util.CustomFieldCriterionInputSerializer::class")
-                            .build()
-                    } else {
-                        AnnotationSpec.builder(Serializable::class).build()
-                    }
-                val typeBuilder =
-                    member
-                        .toBuilder()
-                        .addAnnotation(annotation)
-                if (member.name != "CustomFieldCriterionInput") {
-                    typeBuilder.propertySpecs.replaceAll { prop ->
-                        if (prop.type is ParameterizedTypeName &&
-                            (prop.type as ParameterizedTypeName).rawType.canonicalName == "com.apollographql.apollo.api.Optional"
-                        ) {
-                            // If the property is an Optional (basically all of them), then add a Contextual annotation
-                            // This allows for runtime serialization, because the app defines a serializer for this class
-                            prop
-                                .toBuilder()
-                                .addAnnotation(Contextual::class)
+                val typeBuilder = member.toBuilder()
+                
+                // Only add @Serializable if requested (disabled to avoid serialization issues with nested types)
+                if (addSerializable) {
+                    val annotation =
+                        if (member.name == "CustomFieldCriterionInput") {
+                            AnnotationSpec
+                                .builder(Serializable::class)
+                                .addMember("with = com.github.damontecres.stashapp.util.CustomFieldCriterionInputSerializer::class")
                                 .build()
                         } else {
-                            prop
+                            AnnotationSpec.builder(Serializable::class).build()
+                        }
+                    typeBuilder.addAnnotation(annotation)
+                    
+                    if (member.name != "CustomFieldCriterionInput") {
+                        typeBuilder.propertySpecs.replaceAll { prop ->
+                            if (prop.type is ParameterizedTypeName &&
+                                (prop.type as ParameterizedTypeName).rawType.canonicalName == "com.apollographql.apollo.api.Optional"
+                            ) {
+                                prop
+                                    .toBuilder()
+                                    .addAnnotation(Contextual::class)
+                                    .build()
+                            } else {
+                                prop
+                            }
                         }
                     }
                 }

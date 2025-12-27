@@ -852,6 +852,9 @@ fun PlaybackPageContent(
                             PlaybackAction.ShowSceneDetails -> {
                                 showSceneDetails = true
                             }
+
+                            PlaybackAction.ToggleAutoPause -> Unit
+                            PlaybackAction.ToggleEnhancedSubtitles -> Unit
                         }
                     },
                     onSeekBarChange = seekBarState::onValueChange,

@@ -5,6 +5,8 @@ import com.apollographql.apollo.api.Optional
 import com.chrynan.parcelable.core.Parcelable
 import com.github.damontecres.stashapp.api.type.CriterionModifier
 import com.github.damontecres.stashapp.api.type.CustomFieldCriterionInput
+import com.github.damontecres.stashapp.suppliers.FilterArgs
+import com.github.damontecres.stashapp.suppliers.FilterArgsSerializer
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
@@ -40,6 +42,7 @@ val OptionalSerializersModule =
         }
         contextual(CustomFieldCriterionInput::class) { _ -> CustomFieldCriterionInputSerializer() }
         contextual(Any::class) { _ -> AnySerializer() }
+        contextual(FilterArgs::class) { _ -> FilterArgsSerializer }
     }
 
 /**
