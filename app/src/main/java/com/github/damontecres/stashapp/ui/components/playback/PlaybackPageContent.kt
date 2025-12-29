@@ -529,8 +529,7 @@ fun PlaybackPageContent(
             object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     if (isPlaying) {
-                        val seconds = player.currentPosition / 1000.0
-                        enhancedSubtitleViewModel.notifyUserResumed(seconds)
+                        enhancedSubtitleViewModel.notifyUserResumed()
                     }
                 }
                 override fun onCues(cueGroup: CueGroup) {
@@ -1114,23 +1113,8 @@ fun PlaybackPageContent(
             // Use tracked player position for subtitle synchronization
             val currentTimeSeconds = (playerPosition / 1000.0).coerceAtLeast(0.0)
             
-            // Monitor word navigation mode state and pause/resume playback accordingly
+            // Word navigation mode state (auto-pause happens in checkAutoPause, not here)
             val isInWordNavigationMode by enhancedSubtitleViewModel.isInWordNavigationMode.collectAsState()
-            val wasPlayingBeforeWordNav = remember { mutableStateOf(false) }
-            LaunchedEffect(isInWordNavigationMode) {
-                if (isInWordNavigationMode) {
-                    // Entering word navigation mode: pause playback if playing
-                    wasPlayingBeforeWordNav.value = player.isPlaying
-                    if (player.isPlaying) {
-                        player.pause()
-                    }
-                } else {
-                    // Exiting word navigation mode: resume playback if it was playing before
-                    if (wasPlayingBeforeWordNav.value && !player.isPlaying) {
-                        player.play()
-                    }
-                }
-            }
             
             com.github.damontecres.stashapp.subtitle.EnhancedSubtitleOverlay(
                 viewModel = enhancedSubtitleViewModel,
@@ -1254,8 +1238,7 @@ class PlaybackKeyHandler(
                     } else {
                         player.play()
                         // Mark manual resume to suppress immediate auto-pause retrigger
-                        val seconds = (player.currentPosition / 1000.0).coerceAtLeast(0.0)
-                        enhancedSubtitleViewModel?.notifyUserResumed(seconds)
+                        enhancedSubtitleViewModel?.notifyUserResumed()
                     }
                     enhancedSubtitleViewModel?.exitWordNavigationMode()
                     lastUpArrowPress = 0L
@@ -1353,8 +1336,7 @@ class PlaybackKeyHandler(
                         // If auto-paused, resume immediately without waiting for
                         // double-click timeout to avoid feeling unresponsive.
                         if (enhancedSubtitleViewModel.isAutoPaused.value) {
-                            val seconds = (player.currentPosition / 1000.0).coerceAtLeast(0.0)
-                            enhancedSubtitleViewModel.notifyUserResumed(seconds)
+                            enhancedSubtitleViewModel.notifyUserResumed()
                             player.play()
                             enhancedSubtitleViewModel.exitWordNavigationMode()
                             // Record current time for double-click detection
@@ -1476,8 +1458,7 @@ class PlaybackKeyHandler(
                     enhancedSubtitleViewModel.isAutoPaused.value
                 ) {
                     Log.d("PlaybackPageContent", "OK/Enter: auto-paused, no word selected, resuming playback")
-                    val seconds = (player.currentPosition / 1000.0).coerceAtLeast(0.0)
-                    enhancedSubtitleViewModel.notifyUserResumed(seconds)
+                    enhancedSubtitleViewModel.notifyUserResumed()
                     player.play()
                     return true
                 }
@@ -1580,8 +1561,7 @@ class PlaybackKeyHandler(
                     // If was auto-paused, resume playback
                     if (wasAutoPaused && !player.isPlaying) {
                         Log.d("PlaybackPageContent", "Back key: exiting word nav mode, resuming playback from auto-pause")
-                        val seconds = (player.currentPosition / 1000.0).coerceAtLeast(0.0)
-                        enhancedSubtitleViewModel.notifyUserResumed(seconds)
+                        enhancedSubtitleViewModel.notifyUserResumed()
                         player.play()
                     }
                     return true

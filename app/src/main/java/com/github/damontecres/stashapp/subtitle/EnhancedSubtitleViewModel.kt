@@ -77,6 +77,10 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
     private val _isAutoPaused = MutableStateFlow(false)
     val isAutoPaused: StateFlow<Boolean> = _isAutoPaused.asStateFlow()
     
+    // Track if auto-pause was triggered and user resumed playback (same as Web端 userResumedPlaybackRef)
+    private var _autoPauseTriggered = false
+    private var _userResumedPlayback = false
+    
     // Word navigation state
     private val _selectedWordIndex = MutableStateFlow(-1)
     val selectedWordIndex: StateFlow<Int> = _selectedWordIndex.asStateFlow()
@@ -198,8 +202,8 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
         
         if (cue != _currentCue.value) {
             _currentCue.value = cue
-            // Reset auto-paused state when cue changes
-            _isAutoPaused.value = false
+            // Reset auto-pause state when cue changes (same as Web端)
+            resetAutoPauseState()
             
             // Segment the text when cue changes
             cue?.let { segmentCueText(it) }
@@ -507,9 +511,15 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
     
     /**
      * Check if auto-pause should trigger (returns true if should pause)
+     * Auto-pause triggers if: manual auto-pause enabled OR in word navigation mode
+     * (Same logic as Web端)
      */
     fun checkAutoPause(currentTimeSeconds: Double): Boolean {
-        if (!_autoPauseEnabled.value) {
+        // Auto-pause if: manual auto-pause enabled OR in word navigation mode
+        val isInWordMode = _isInWordNavigationMode.value
+        val shouldRunAutoPauseLogic = _autoPauseEnabled.value || isInWordMode
+        
+        if (!shouldRunAutoPauseLogic) {
             _isAutoPaused.value = false
             return false
         }
@@ -520,74 +530,50 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
         }
         val timeUntilEnd = cue.endTime - currentTimeSeconds
         
-        // If user just manually resumed playback, suppress auto-pause briefly
-        if (shouldSuppressAutoPause(currentTimeSeconds, cue)) {
-            _isAutoPaused.value = false
+        // If user already resumed playback after auto-pause, don't pause again for this cue
+        // (Same logic as Web端 userResumedPlaybackRef)
+        if (_autoPauseTriggered && _userResumedPlayback) {
             return false
         }
 
         // If time has passed the pause threshold or subtitle end, reset paused state
-        // This handles the case when user resumes playback after auto-pause
         if (timeUntilEnd <= 0 || currentTimeSeconds >= cue.endTime) {
             _isAutoPaused.value = false
             return false
         }
         
-        // Pause 0.3 seconds before subtitle ends
-        val shouldPause = timeUntilEnd <= 0.3 && timeUntilEnd > 0
+        // Pause 0.1 seconds before subtitle ends
+        val shouldPause = timeUntilEnd <= 0.2 && timeUntilEnd > 0
         
         // Update paused state
         if (shouldPause) {
-            // Set to paused state when in pause zone
-            if (!_isAutoPaused.value) {
+            if (!_isAutoPaused.value && !_autoPauseTriggered) {
+                _autoPauseTriggered = true
                 _isAutoPaused.value = true
             }
-        } else {
-            // Reset to playing state when not in pause zone
-            _isAutoPaused.value = false
         }
         
-        return shouldPause
+        return shouldPause && !_userResumedPlayback
     }
-
-    // --- Manual resume suppression logic ---
-    private var lastManualResumeSeconds: Double? = null
-    private var lastManualResumeCue: SubtitleCue? = null
 
     /**
      * Call when user explicitly resumes playback (e.g., presses OK/Play).
-     * This will suppress auto-pause for a small window and for the current cue.
+     * Same logic as Web端 userResumedPlaybackRef.
      */
-    fun notifyUserResumed(currentTimeSeconds: Double) {
-        lastManualResumeSeconds = currentTimeSeconds
-        lastManualResumeCue = _currentCue.value
-    }
-
-    /**
-     * Returns true if auto-pause should be suppressed due to a recent manual resume.
-     * Suppression ends when: time advances beyond window, or cue changes/ends.
-     */
-    private fun shouldSuppressAutoPause(currentTimeSeconds: Double, cue: SubtitleCue): Boolean {
-        val resumeAt = lastManualResumeSeconds ?: return false
-        val resumeCue = lastManualResumeCue
-
-        // Suppress for 0.75 seconds after resume to allow playback to escape pause window
-        val suppressWindow = 0.75
-        val withinTimeWindow = currentTimeSeconds - resumeAt <= suppressWindow && currentTimeSeconds >= resumeAt
-
-        // Suppress only for the same cue the user resumed in
-        val sameCue = resumeCue != null && resumeCue.startTime == cue.startTime && resumeCue.endTime == cue.endTime
-
-        // Clear suppression if cue changed or time window elapsed substantially
-        if (!withinTimeWindow || !sameCue) {
-            // Do not clear immediately if sameCue but window passed; allow GC
-            if (!sameCue || currentTimeSeconds - resumeAt > suppressWindow) {
-                lastManualResumeSeconds = null
-                lastManualResumeCue = null
-            }
+    fun notifyUserResumed() {
+        if (_autoPauseTriggered && _isAutoPaused.value) {
+            _userResumedPlayback = true
+            _isAutoPaused.value = false
         }
-
-        return withinTimeWindow && sameCue
+    }
+    
+    /**
+     * Reset auto-pause state when cue changes (same as Web端)
+     */
+    private fun resetAutoPauseState() {
+        _autoPauseTriggered = false
+        _userResumedPlayback = false
+        _isAutoPaused.value = false
     }
     
     override fun onCleared() {
