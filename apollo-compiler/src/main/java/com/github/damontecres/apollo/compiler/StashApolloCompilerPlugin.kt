@@ -47,11 +47,20 @@ class StashApolloCompilerPlugin : ApolloCompilerPlugin {
                         val newFileSpecs =
                             input.fileSpecs.map { file ->
                                 if (
-                                    file.name.endsWith("FilterType") &&
-                                    file.name !in
+                                    (
+                                        file.name.endsWith("FilterType") &&
+                                            file.name !in
+                                            setOf(
+                                                "FindFilterType",
+                                                "SavedFindFilterType",
+                                            )
+                                    ) ||
+                                    file.name.endsWith("CriterionInput") ||
+                                    file.name in
                                     setOf(
-                                        "FindFilterType",
-                                        "SavedFindFilterType",
+                                        "FingerprintFilterInput",
+                                        "VideoFileFilterInput",
+                                        "ImageFileFilterInput",
                                     )
                                 ) {
                                     // Modify filter types only (not CriterionInput to avoid serialization issues)
