@@ -1,0 +1,3 @@
+[submodule "stash-server"]
+	path = stash-server
+	url = https://github.com/boomboomcaca/stash
