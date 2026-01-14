@@ -12,6 +12,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.ksp)
     id("kotlin-parcelize")
+    id("kotlin-kapt")
     alias(libs.plugins.apollo)
     alias(libs.plugins.kotlin.plugin.serialization)
     alias(libs.plugins.room)
@@ -211,7 +212,7 @@ dependencies {
 
     implementation(libs.glide)
     implementation(libs.glide.okhttp3.integration)
-    ksp(libs.glide.ksp)
+    kapt(libs.glide.ksp)
 
     implementation(libs.android.material)
 
