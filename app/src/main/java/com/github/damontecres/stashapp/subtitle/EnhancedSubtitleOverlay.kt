@@ -508,7 +508,10 @@ private fun DictionaryDialog(
                             )
                             .padding(horizontal = 6.dp, vertical = 3.dp)
                             .handleDPadKeyEvents(
-                                onCenter = onToggleFavorite
+                                onLeft = { if (hasPronunciation) pronunciationFocusRequester.tryRequestFocus() },
+                                onRight = { if (hasPronunciation) pronunciationFocusRequester.tryRequestFocus() },
+                                onUp = onDismiss,
+                                onEnter = onToggleFavorite
                             )
                             .focusable(interactionSource = favoriteInteractionSource)
                             .clickable(
@@ -558,7 +561,10 @@ private fun DictionaryDialog(
                                     )
                                     .padding(horizontal = 6.dp, vertical = 3.dp)
                                     .handleDPadKeyEvents(
-                                        onCenter = onPlayPronunciation
+                                        onLeft = { favoriteFocusRequester.tryRequestFocus() },
+                                        onRight = { favoriteFocusRequester.tryRequestFocus() },
+                                        onUp = onDismiss,
+                                        onEnter = onPlayPronunciation
                                     )
                                     .focusable(interactionSource = pronunciationInteractionSource)
                                     .clickable(
