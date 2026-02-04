@@ -1,0 +1,7 @@
+{
+    "java.import.gradle.wrapper.enabled": true,
+    "java.import.gradle.version": "8.13",
+    "java.import.gradle.home": "",
+    "java.import.gradle.arguments": "--no-daemon",
+    "java.configuration.updateBuildConfiguration": "automatic"
+}
