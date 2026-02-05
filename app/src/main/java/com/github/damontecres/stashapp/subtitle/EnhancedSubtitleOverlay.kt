@@ -115,12 +115,11 @@ fun EnhancedSubtitleOverlay(
         }
     }
     
-    // Listen for auto-pause state changes and select last word when auto-pause is triggered
-    // Also watch wordSegments to ensure they're ready when auto-pause triggers
-    androidx.compose.runtime.LaunchedEffect(isAutoPaused, wordSegments) {
-        if (!previousAutoPaused && isAutoPaused && wordSegments.isNotEmpty()) {
-            Log.d("EnhancedSubtitleOverlay", "Auto-pause triggered, selecting last word (segments count: ${wordSegments.size})")
-            viewModel.enterWordNavigationModeWithLastWord()
+    // Listen for auto-pause state changes
+    // Do not auto-select any word - let user manually navigate
+    androidx.compose.runtime.LaunchedEffect(isAutoPaused) {
+        if (!previousAutoPaused && isAutoPaused) {
+            Log.d("EnhancedSubtitleOverlay", "Auto-pause triggered, no word auto-selected")
         }
         previousAutoPaused = isAutoPaused
     }

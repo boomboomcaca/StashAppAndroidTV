@@ -354,21 +354,6 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
         }
     }
     
-    /**
-     * Enter word navigation mode and select the last word
-     * Used when auto-pause is triggered
-     */
-    fun enterWordNavigationModeWithLastWord() {
-        val segments = _wordSegments.value
-        if (segments.isNotEmpty()) {
-            _isInWordNavigationMode.value = true
-            _selectedWordIndex.value = segments.size - 1
-            Log.d(TAG, "enterWordNavigationModeWithLastWord: entered word nav mode, selected last word at index=${segments.size - 1}")
-        } else {
-            Log.d(TAG, "enterWordNavigationModeWithLastWord: segments empty, cannot select last word")
-        }
-    }
-    
     fun exitWordNavigationMode() {
         _isInWordNavigationMode.value = false
         _selectedWordIndex.value = -1
