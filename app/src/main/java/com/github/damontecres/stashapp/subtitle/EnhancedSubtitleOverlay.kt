@@ -28,8 +28,11 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.ui.res.painterResource
+import com.github.damontecres.stashapp.R
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -429,19 +432,17 @@ private fun DictionaryDialog(
 ) {
     val favoriteFocusRequester = remember { FocusRequester() }
     val pronunciationFocusRequester = remember { FocusRequester() }
-    val hasPronunciation = entry?.pronunciation != null
     
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        // Request focus on pronunciation element first if available, otherwise favorite button
-        // This allows immediate navigation with D-pad keys and pressing OK to play pronunciation
-        LaunchedEffect(hasPronunciation, isLoading) {
-            if (hasPronunciation && !isLoading) {
-                pronunciationFocusRequester.tryRequestFocus()
-            } else {
-                favoriteFocusRequester.tryRequestFocus()
+        // Request focus on pronunciation icon first (always available), allows immediate play with OK
+        LaunchedEffect(isLoading) {
+            if (!isLoading) {
+                // Small delay to ensure UI is fully rendered before requesting focus
+                kotlinx.coroutines.delay(50)
+                pronunciationFocusRequester.requestFocus()
             }
         }
         
@@ -464,10 +465,48 @@ private fun DictionaryDialog(
                     .verticalScroll(scrollState)
                     .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
-                // Title with favorite on the right
+                // Title row: Sound icon (left) + Word (center) + Favorite (right)
                 Box(
                     modifier = Modifier.fillMaxWidth()
                 ) {
+                    // Sound icon positioned on the left
+                    val pronunciationInteractionSource = remember { MutableInteractionSource() }
+                    val isPronunciationFocused by pronunciationInteractionSource.collectIsFocusedAsState()
+                    val pronunciationBgColor = if (isPronunciationFocused) {
+                        Color(0xFF4A90E2).copy(alpha = 0.8f) // Blue background when focused
+                    } else {
+                        Color.Transparent
+                    }
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .focusRequester(pronunciationFocusRequester)
+                            .background(
+                                color = pronunciationBgColor,
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .padding(horizontal = 6.dp, vertical = 3.dp)
+                            .handleDPadKeyEvents(
+                                onLeft = { favoriteFocusRequester.tryRequestFocus() },
+                                onRight = { favoriteFocusRequester.tryRequestFocus() },
+                                onUp = onDismiss,
+                                onEnter = onPlayPronunciation
+                            )
+                            .focusable(interactionSource = pronunciationInteractionSource)
+                            .clickable(
+                                interactionSource = pronunciationInteractionSource,
+                                indication = null,
+                                onClick = onPlayPronunciation
+                            )
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_volume_up),
+                            contentDescription = "Play pronunciation",
+                            tint = Color(0xFF4DA3FF),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    
                     // Centered word
                     TvText(
                         text = word,
@@ -477,6 +516,7 @@ private fun DictionaryDialog(
                         modifier = Modifier.align(Alignment.Center),
                         textAlign = TextAlign.Center
                     )
+                    
                     // Favorite star positioned on the right
                     val favoriteInteractionSource = remember { MutableInteractionSource() }
                     val isFavoriteFocused by favoriteInteractionSource.collectIsFocusedAsState()
@@ -495,8 +535,8 @@ private fun DictionaryDialog(
                             )
                             .padding(horizontal = 6.dp, vertical = 3.dp)
                             .handleDPadKeyEvents(
-                                onLeft = { if (hasPronunciation) pronunciationFocusRequester.tryRequestFocus() },
-                                onRight = { if (hasPronunciation) pronunciationFocusRequester.tryRequestFocus() },
+                                onLeft = { pronunciationFocusRequester.tryRequestFocus() },
+                                onRight = { pronunciationFocusRequester.tryRequestFocus() },
                                 onUp = onDismiss,
                                 onEnter = onToggleFavorite
                             )
@@ -515,58 +555,16 @@ private fun DictionaryDialog(
                     }
                 }
 
-                // POS chip + pronunciation
+                // POS chip (only show if entry is available)
                 entry?.let { e ->
                     val posText = e.definitions.firstOrNull()?.partOfSpeech ?: ""
-                    Row(
-                        modifier = Modifier.padding(top = 6.dp, bottom = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 6.dp, bottom = 8.dp)
+                            .background(Color(0xFF3A4A55), RoundedCornerShape(50))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .background(Color(0xFF3A4A55), RoundedCornerShape(50))
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            TvText(text = posText.ifEmpty { "词性" }, color = Color(0xFFF2F6FA), fontSize = 18.sp)
-                        }
-                        e.pronunciation?.let { pr ->
-                            // Pronunciation with focus styling
-                            val pronunciationInteractionSource = remember { MutableInteractionSource() }
-                            val isPronunciationFocused by pronunciationInteractionSource.collectIsFocusedAsState()
-                            val pronunciationBgColor = if (isPronunciationFocused) {
-                                Color(0xFF4A90E2).copy(alpha = 0.8f) // Blue background when focused
-                            } else {
-                                Color.Transparent
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .focusRequester(pronunciationFocusRequester)
-                                    .background(
-                                        color = pronunciationBgColor,
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
-                                    .padding(horizontal = 6.dp, vertical = 3.dp)
-                                    .handleDPadKeyEvents(
-                                        onLeft = { favoriteFocusRequester.tryRequestFocus() },
-                                        onRight = { favoriteFocusRequester.tryRequestFocus() },
-                                        onUp = onDismiss,
-                                        onEnter = onPlayPronunciation
-                                    )
-                                    .focusable(interactionSource = pronunciationInteractionSource)
-                                    .clickable(
-                                        interactionSource = pronunciationInteractionSource,
-                                        indication = null,
-                                        onClick = onPlayPronunciation
-                                    )
-                            ) {
-                                TvText(
-                                    text = " [${pr}]",
-                                    color = Color(0xFF4DA3FF),
-                                    fontSize = 22.sp
-                                )
-                            }
-                        }
+                        TvText(text = posText.ifEmpty { "词性" }, color = Color(0xFFF2F6FA), fontSize = 18.sp)
                     }
                 }
 
