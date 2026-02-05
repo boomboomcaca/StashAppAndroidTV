@@ -102,9 +102,6 @@ fun EnhancedSubtitleOverlay(
         viewModel.loadSubtitles(subtitleUrl)
     }
     
-    // Track previous auto-paused state to detect when auto-pause is triggered
-    var previousAutoPaused by remember { mutableStateOf(false) }
-    
     // Update playback time
     androidx.compose.runtime.LaunchedEffect(currentTimeSeconds) {
         viewModel.updatePlaybackTime(currentTimeSeconds)
@@ -113,15 +110,6 @@ fun EnhancedSubtitleOverlay(
         if (viewModel.checkAutoPause(currentTimeSeconds)) {
             onPausePlayer?.invoke()
         }
-    }
-    
-    // Listen for auto-pause state changes
-    // Do not auto-select any word - let user manually navigate
-    androidx.compose.runtime.LaunchedEffect(isAutoPaused) {
-        if (!previousAutoPaused && isAutoPaused) {
-            Log.d("EnhancedSubtitleOverlay", "Auto-pause triggered, no word auto-selected")
-        }
-        previousAutoPaused = isAutoPaused
     }
     
     // Auto-pause when dictionary dialog opens (when a word is selected)

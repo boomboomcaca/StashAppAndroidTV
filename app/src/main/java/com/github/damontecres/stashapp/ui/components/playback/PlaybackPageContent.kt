@@ -1418,6 +1418,8 @@ class PlaybackKeyHandler(
                         if (!player.isPlaying) {
                             player.play()
                         }
+                        // Reset auto-pause state for replay (cue doesn't change, so need manual reset)
+                        enhancedSubtitleViewModel?.resetAutoPauseForReplay()
                         // Exit word selection mode when replaying current subtitle
                         enhancedSubtitleViewModel?.exitWordNavigationMode()
                     }

@@ -561,6 +561,17 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
         _isAutoPaused.value = false
     }
     
+    /**
+     * Reset auto-pause state for replay current subtitle.
+     * When replaying the same cue, cue doesn't change so resetAutoPauseState() won't be called
+     * automatically. This method allows manual reset to enable auto-pause for the replayed subtitle.
+     */
+    fun resetAutoPauseForReplay() {
+        _autoPauseTriggered = false
+        _userResumedPlayback = false
+        _isAutoPaused.value = false
+    }
+    
     override fun onCleared() {
         super.onCleared()
         pronunciationService?.shutdown()
