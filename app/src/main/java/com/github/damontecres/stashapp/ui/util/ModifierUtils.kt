@@ -89,7 +89,10 @@ fun Modifier.handleDPadKeyEvents(
 }
 
 /**
- * Handles all D-Pad Keys
+ * Handles all D-Pad Keys.
+ * Uses onPreviewKeyEvent to consume both ACTION_DOWN and ACTION_UP events,
+ * preventing Compose's default focus navigation from interfering.
+ * Callbacks are only executed on ACTION_UP.
  * */
 fun Modifier.handleDPadKeyEvents(
     onLeft: (() -> Unit)? = null,
@@ -97,30 +100,48 @@ fun Modifier.handleDPadKeyEvents(
     onUp: (() -> Unit)? = null,
     onDown: (() -> Unit)? = null,
     onEnter: (() -> Unit)? = null,
-) = onKeyEvent {
-    if (it.nativeKeyEvent.action == KeyEvent.ACTION_UP) {
-        when (it.nativeKeyEvent.keyCode) {
-            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_SYSTEM_NAVIGATION_LEFT -> {
-                onLeft?.invoke().also { return@onKeyEvent true }
-            }
+) = onPreviewKeyEvent {
+    fun onActionUp(block: () -> Unit) {
+        if (it.nativeKeyEvent.action == KeyEvent.ACTION_UP) block()
+    }
 
-            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_SYSTEM_NAVIGATION_RIGHT -> {
-                onRight?.invoke().also { return@onKeyEvent true }
+    when (it.nativeKeyEvent.keyCode) {
+        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_SYSTEM_NAVIGATION_LEFT -> {
+            onLeft?.apply {
+                onActionUp(::invoke)
+                return@onPreviewKeyEvent true
             }
+        }
 
-            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_SYSTEM_NAVIGATION_UP -> {
-                onUp?.invoke().also { return@onKeyEvent true }
+        KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_SYSTEM_NAVIGATION_RIGHT -> {
+            onRight?.apply {
+                onActionUp(::invoke)
+                return@onPreviewKeyEvent true
             }
+        }
 
-            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_SYSTEM_NAVIGATION_DOWN -> {
-                onDown?.invoke().also { return@onKeyEvent true }
+        KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_SYSTEM_NAVIGATION_UP -> {
+            onUp?.apply {
+                onActionUp(::invoke)
+                return@onPreviewKeyEvent true
             }
+        }
 
-            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
-                onEnter?.invoke().also { return@onKeyEvent true }
+        KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_SYSTEM_NAVIGATION_DOWN -> {
+            onDown?.apply {
+                onActionUp(::invoke)
+                return@onPreviewKeyEvent true
+            }
+        }
+
+        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+            onEnter?.apply {
+                onActionUp(::invoke)
+                return@onPreviewKeyEvent true
             }
         }
     }
+
     false
 }
 
