@@ -1,10 +1,13 @@
+
 import com.android.build.gradle.internal.cxx.io.writeTextIfDifferent
 import com.android.build.gradle.internal.tasks.factory.dependsOn
 import com.google.protobuf.gradle.id
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Base64
-import java.util.Properties
 
 val isCI = if (System.getenv("CI") != null) System.getenv("CI").toBoolean() else false
+val ffmpegModuleExists = project.file("libs/lib-decoder-ffmpeg-release.aar").exists()
+val av1ModuleExists = project.file("libs/lib-decoder-av1-release.aar").exists()
 val shouldSign = isCI && System.getenv("KEY_ALIAS") != null
 
 plugins {
@@ -89,6 +92,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            isDebuggable = false
+
             if (shouldSign) {
                 signingConfig = signingConfigs.getByName("ci")
             } else {
@@ -97,6 +102,9 @@ android {
             }
         }
         debug {
+            isMinifyEnabled = false
+            isDebuggable = true
+            applicationIdSuffix = ".debug"
             if (shouldSign) {
                 signingConfig = signingConfigs.getByName("ci")
             }
@@ -107,10 +115,19 @@ android {
             variant.outputs
                 .map { it as com.android.build.gradle.internal.api.BaseVariantOutputImpl }
                 .forEach { output ->
+                    val abi = output.getFilter("ABI").let { if (it != null) "-$it" else "" }
                     val outputFileName =
-                        "StashAppAndroidTV-${variant.baseName}-${variant.versionName}-${variant.versionCode}.apk"
+                        "StashAppAndroidTV-${variant.baseName}-${variant.versionName}-${variant.versionCode}$abi.apk"
                     output.outputFileName = outputFileName
                 }
+        }
+    }
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a")
+            isUniversalApk = true
         }
     }
     compileOptions {
@@ -118,8 +135,11 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
         isCoreLibraryDesugaringEnabled = true
     }
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
+    kotlin {
+        compilerOptions {
+            jvmTarget = JvmTarget.JVM_11
+            javaParameters = true
+        }
     }
     lint {
         disable.add("MissingTranslation")
@@ -286,6 +306,13 @@ dependencies {
     implementation(libs.reword)
     implementation(libs.androidx.datastore)
     implementation(libs.protobuf.kotlin.lite)
+
+    if (ffmpegModuleExists || isCI) {
+        implementation(files("libs/lib-decoder-ffmpeg-release.aar"))
+    }
+    if (av1ModuleExists || isCI) {
+        implementation(files("libs/lib-decoder-av1-release.aar"))
+    }
 
     testImplementation(libs.androidx.test.core.ktx)
     testImplementation(libs.junit)

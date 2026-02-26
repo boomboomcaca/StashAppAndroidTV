@@ -75,6 +75,8 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import com.github.damontecres.stashapp.subtitle.EnhancedSubtitleViewModel
+import androidx.media3.extractor.text.SubtitleParser
+import androidx.media3.extractor.text.webvtt.WebvttParser
 import androidx.media3.ui.SubtitleView
 import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
@@ -123,6 +125,7 @@ import com.github.damontecres.stashapp.util.ComposePager
 import com.github.damontecres.stashapp.util.LoggingCoroutineExceptionHandler
 import com.github.damontecres.stashapp.util.MutationEngine
 import com.github.damontecres.stashapp.util.QueryEngine
+import com.github.damontecres.stashapp.util.StashClient
 import com.github.damontecres.stashapp.util.StashCoroutineExceptionHandler
 import com.github.damontecres.stashapp.util.StashServer
 import com.github.damontecres.stashapp.util.findActivity
@@ -136,8 +139,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.Request
 import java.util.Locale
 import kotlin.properties.Delegates
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.microseconds
 import kotlin.time.Duration.Companion.milliseconds
 
 const val TAG = "PlaybackPageContent"
@@ -160,7 +166,7 @@ class PlaybackViewModel : ViewModel() {
     val markers = MutableLiveData<List<BasicMarker>>(listOf())
     val oCount = MutableLiveData(0)
     val rating100 = MutableLiveData(0)
-    val spriteImageLoaded = MutableLiveData(false)
+    val spriteImageLoaded = MutableLiveData<List<SpriteData>>(emptyList())
 
     private val _videoFilter = MutableLiveData<VideoFilter?>(null)
     val videoFilter = ThrottledLiveData(_videoFilter, 500L)
@@ -198,7 +204,7 @@ class PlaybackViewModel : ViewModel() {
         this.oCount.value = 0
         this.rating100.value = 0
         this.markers.value = listOf()
-        this.spriteImageLoaded.value = false
+        this.spriteImageLoaded.value = emptyList()
 
         if (trackActivity) {
             Log.v(
@@ -252,7 +258,7 @@ class PlaybackViewModel : ViewModel() {
         viewModelScope.launch(sceneJob + StashCoroutineExceptionHandler()) {
             val context = StashApplication.getApplication()
             val imageLoader = SingletonImageLoader.get(context)
-            if (tag.item.spriteUrl.isNotNullOrBlank()) {
+            if (tag.item.spriteUrl.isNotNullOrBlank() && tag.item.vttUrl.isNotNullOrBlank()) {
                 val request =
                     ImageRequest
                         .Builder(context)
@@ -261,11 +267,72 @@ class PlaybackViewModel : ViewModel() {
                         .scale(Scale.FILL)
                         .build()
                 val result = imageLoader.enqueue(request).job.await()
-                Log.d(TAG, "sprite preload done scene=${tag.item.id}, success=${result.image != null}, url=${tag.item.spriteUrl}")
-                spriteImageLoaded.value = result.image != null
+                if (result.image != null) {
+                    spriteImageLoaded.value = fetchSprites(tag.item.id, tag.item.vttUrl)
+                }
             }
         }
     }
+
+    @OptIn(UnstableApi::class)
+    private suspend fun fetchSprites(
+        sceneId: String,
+        vttUrl: String,
+    ): List<SpriteData> =
+        withContext(Dispatchers.Default) {
+            val res =
+                withContext(Dispatchers.IO) {
+                    server.okHttpClient
+                        .newCall(
+                            Request.Builder().url(vttUrl).build(),
+                        ).execute()
+                }
+            if (res.isSuccessful) {
+                res.body.use {
+                    it?.bytes()?.let {
+                        try {
+                            val baseUrl = StashClient.getServerRoot(server.url)
+                            val regex = Regex("(\\w+\\.\\w+)#xywh=(\\d+),(\\d+),(\\d+),(\\d+)")
+                            val spriteData = mutableListOf<SpriteData>()
+                            WebvttParser().parse(it, SubtitleParser.OutputOptions.allCues()) {
+                                val start = it.startTimeUs.microseconds
+                                val end = it.endTimeUs.microseconds
+                                it.cues.firstOrNull()?.text?.let { cue ->
+                                    val m = regex.matchEntire(cue)
+                                    if (m != null) {
+                                        val url = "$baseUrl/scene/${m.groupValues[1]}"
+                                        val x = m.groupValues[2].toInt()
+                                        val y = m.groupValues[3].toInt()
+                                        val w = m.groupValues[4].toInt()
+                                        val h = m.groupValues[5].toInt()
+                                        val sprite =
+                                            SpriteData(
+                                                start = start,
+                                                end = end,
+                                                url = url,
+                                                x = x,
+                                                y = y,
+                                                w = w,
+                                                h = h,
+                                            )
+//                                        Log.v(TAG, "sprite=$sprite")
+                                        spriteData.add(sprite)
+                                    }
+                                }
+                            }
+                            return@withContext spriteData
+                        } catch (ex: Exception) {
+                            Log.w(TAG, "Error parsing sprites for $sceneId", ex)
+                            return@withContext emptyList()
+                        }
+                    }
+                    emptyList()
+                }
+            } else {
+                Log.d(TAG, "No sprites for $sceneId")
+                return@withContext emptyList()
+            }
+        }
 
     private fun refreshScene(sceneId: String) {
         // Fetch o count & markers
@@ -375,11 +442,21 @@ val playbackScaleOptions =
         ContentScale.FillHeight to "Fill Height",
     )
 
+data class SpriteData(
+    val start: Duration,
+    val end: Duration,
+    val url: String,
+    val x: Int,
+    val y: Int,
+    val w: Int,
+    val h: Int,
+)
+
 @OptIn(UnstableApi::class)
 @Composable
 fun PlaybackPageContent(
     server: StashServer,
-    player: ExoPlayer,
+    player: Player,
     playlist: List<MediaItem>,
     startIndex: Int,
     uiConfig: ComposeUiConfig,
@@ -406,7 +483,7 @@ fun PlaybackPageContent(
     val markers by viewModel.markers.observeAsState(listOf())
     val oCount by viewModel.oCount.observeAsState(0)
     val rating100 by viewModel.rating100.observeAsState(0)
-    val spriteImageLoaded by viewModel.spriteImageLoaded.observeAsState(false)
+    val spriteImageLoaded by viewModel.spriteImageLoaded.observeAsState(emptyList())
     var currentTracks by remember { mutableStateOf<List<TrackSupport>>(listOf()) }
     var captions by remember { mutableStateOf<List<TrackSupport>>(listOf()) }
     var subtitles by remember { mutableStateOf<List<Cue>?>(null) }
@@ -645,7 +722,7 @@ fun PlaybackPageContent(
         player.prepare()
         if (useVideoFilters) {
             Log.d(TAG, "Enabling video effects")
-            player.setVideoEffects(listOf())
+            (player as? ExoPlayer)?.setVideoEffects(listOf())
         }
     }
 
@@ -939,7 +1016,6 @@ fun PlaybackPageContent(
                     seekEnabled = seekBarState.isEnabled,
                     seekPreviewEnabled = !isMarkerPlaylist,
                     showDebugInfo = showDebugInfo,
-                    spriteImageLoaded = spriteImageLoaded,
                     moreButtonOptions =
                         MoreButtonOptions(
                             buildMap {
@@ -972,6 +1048,7 @@ fun PlaybackPageContent(
                     audioDecoder = audioDecoder,
                     enhancedSubtitlesEnabled = enhancedSubtitlesEnabled,
                     autoPauseEnabled = autoPauseEnabled,
+                    spriteData = spriteImageLoaded,
                 )
             }
         }
@@ -1006,7 +1083,7 @@ fun PlaybackPageContent(
         videoFilter?.let {
             val effectList = it.createEffectList()
             Log.d(TAG, "Applying ${effectList.size} effects")
-            player.setVideoEffects(effectList)
+            (player as? ExoPlayer)?.setVideoEffects(effectList)
 
             AnimatedVisibility(showFilterDialog) {
                 ImageFilterDialog(

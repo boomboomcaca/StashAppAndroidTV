@@ -1,7 +1,9 @@
 package com.github.damontecres.stashapp.ui.components.prefs
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.util.Log
 import androidx.annotation.ArrayRes
 import androidx.annotation.StringRes
@@ -11,6 +13,7 @@ import com.github.damontecres.stashapp.PreferenceScreenOption
 import com.github.damontecres.stashapp.R
 import com.github.damontecres.stashapp.StashApplication
 import com.github.damontecres.stashapp.navigation.Destination
+import com.github.damontecres.stashapp.proto.PlaybackBackend
 import com.github.damontecres.stashapp.proto.PlaybackFinishBehavior
 import com.github.damontecres.stashapp.proto.PlaybackHttpClient
 import com.github.damontecres.stashapp.proto.Resolution
@@ -18,6 +21,7 @@ import com.github.damontecres.stashapp.proto.StashPreferences
 import com.github.damontecres.stashapp.proto.StreamChoice
 import com.github.damontecres.stashapp.proto.TabType
 import com.github.damontecres.stashapp.proto.ThemeStyle
+import com.github.damontecres.stashapp.util.StashDreamService
 import com.github.damontecres.stashapp.util.cacheDurationPrefToDuration
 import com.github.damontecres.stashapp.util.isNotNullOrBlank
 import com.github.damontecres.stashapp.util.updateAdvancedPreferences
@@ -25,6 +29,7 @@ import com.github.damontecres.stashapp.util.updateCachePreferences
 import com.github.damontecres.stashapp.util.updateInterfacePreferences
 import com.github.damontecres.stashapp.util.updatePinPreferences
 import com.github.damontecres.stashapp.util.updatePlaybackPreferences
+import com.github.damontecres.stashapp.util.updateScreensaverPreferences
 import com.github.damontecres.stashapp.util.updateSearchPreferences
 import com.github.damontecres.stashapp.util.updateTabPreferences
 import com.github.damontecres.stashapp.util.updateUpdatePreferences
@@ -1344,6 +1349,37 @@ sealed interface StashPreference<T> {
                 },
             )
 
+        val PlaybackBackendPref =
+            StashChoicePreference<PlaybackBackend>(
+                title = R.string.playback_backend,
+                prefKey = R.string.pref_key_playback_backend,
+                defaultValue = PlaybackBackend.EXO_PLAYER,
+                displayValues = R.array.playback_backend,
+                indexToValue = { PlaybackBackend.forNumber(it) },
+                valueToIndex = { it.number },
+                getter = { it.playbackPreferences.playbackBackend },
+                setter = { prefs, value ->
+                    prefs.updatePlaybackPreferences { playbackBackend = value }
+                },
+                prefGetter = { context: Context, prefs: SharedPreferences ->
+                    val value =
+                        prefs.getString(
+                            context.getString(R.string.pref_key_playback_backend),
+                            null,
+                        )
+                    when (value?.lowercase()) {
+                        "mpv" -> PlaybackBackend.MPV
+                        else -> PlaybackBackend.EXO_PLAYER
+                    }
+                },
+                prefSetter = { context: Context, editor: SharedPreferences.Editor, value: PlaybackBackend ->
+                    editor.putString(
+                        context.getString(R.string.pref_key_playback_backend),
+                        value.name.lowercase(),
+                    )
+                },
+            )
+
         val ImageThreads =
             StashSliderPreference(
                 title = R.string.image_loading_threads,
@@ -1391,6 +1427,37 @@ sealed interface StashPreference<T> {
             StashClickablePreference(
                 title = R.string.migrate_preferences,
                 summary = R.string.migrate_preferences_summary,
+            )
+
+        // Screensaver
+        val ScreensaverEnable =
+            StashSwitchPreference(
+                title = R.string.enable_screensaver,
+                prefKey = R.string.pref_key_screensaver_enabled,
+                defaultValue = false,
+                getter = { it.screensaverPreferences.enabled },
+                setter = { prefs, value ->
+                    val pm: PackageManager = StashApplication.getApplication().packageManager
+                    val componentName =
+                        ComponentName(
+                            StashApplication.getApplication(),
+                            StashDreamService::class.java,
+                        )
+                    val newState =
+                        if (value) PackageManager.COMPONENT_ENABLED_STATE_ENABLED else PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+                    pm.setComponentEnabledSetting(
+                        componentName,
+                        newState,
+                        PackageManager.DONT_KILL_APP,
+                    )
+                    prefs.updateScreensaverPreferences { enabled = value }
+                },
+                summaryOn = R.string.stashapp_actions_enable,
+                summaryOff = R.string.transcode_options_disabled,
+            )
+        val ScreensaverFilter =
+            StashClickablePreference(
+                title = R.string.screensaver_filter,
             )
     }
 }

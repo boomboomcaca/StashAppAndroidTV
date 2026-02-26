@@ -154,7 +154,6 @@ fun PlaybackOverlay(
     onPlaybackActionClick: (PlaybackAction) -> Unit,
     onSeekBarChange: (Float) -> Unit,
     showDebugInfo: Boolean,
-    spriteImageLoaded: Boolean,
     moreButtonOptions: MoreButtonOptions,
     subtitleIndex: Int?,
     audioIndex: Int?,
@@ -166,6 +165,7 @@ fun PlaybackOverlay(
     audioDecoder: String?,
     enhancedSubtitlesEnabled: Boolean = false,
     autoPauseEnabled: Boolean = false,
+    spriteData: List<SpriteData>,
     modifier: Modifier = Modifier,
     seekPreviewPlaceholder: Painter? = null,
     seekBarInteractionSource: MutableInteractionSource = remember { MutableInteractionSource() },
@@ -399,7 +399,7 @@ fun PlaybackOverlay(
             }
             val yOffsetDp =
                 180.dp +
-                    (if (spriteImageLoaded) (160.dp) else 24.dp) +
+                    (if (spriteData.isNotEmpty()) (160.dp) else 24.dp) +
                     (if (markers.isEmpty()) (-24).dp else 0.dp)
             val heightPx = with(LocalDensity.current) { yOffsetDp.toPx().toInt() }
             SeekPreviewImage(
@@ -411,14 +411,11 @@ fun PlaybackOverlay(
                             yOffset = heightPx,
 //                                yPercentage = 1 - controlHeight,
                         ),
-                previewImageUrl = previewImageUrl,
-                imageLoaded = spriteImageLoaded,
                 imageLoader = imageLoader,
                 duration = playerControls.duration,
                 seekProgress = seekProgress,
-                videoWidth = scene.videoWidth,
-                videoHeight = scene.videoHeight,
-                placeHolder = seekPreviewPlaceholder ?: ColorPainter(Color(0xFF1E1E1E)),
+                spriteData = spriteData,
+                placeHolder = seekPreviewPlaceholder,
             )
         }
     }
@@ -443,13 +440,10 @@ fun Modifier.offsetByPercent(
 
 @Composable
 fun SeekPreviewImage(
-    imageLoaded: Boolean,
-    previewImageUrl: String?,
     imageLoader: ImageLoader,
     duration: Long,
     seekProgress: Float,
-    videoWidth: Int?,
-    videoHeight: Int?,
+    spriteData: List<SpriteData>,
     modifier: Modifier = Modifier,
     placeHolder: Painter? = null,
 ) {
@@ -460,41 +454,39 @@ fun SeekPreviewImage(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        if (imageLoaded &&
-            previewImageUrl.isNotNullOrBlank() &&
-            videoWidth != null &&
-            videoHeight != null
-        ) {
-            val height = 160.dp
-            val width = height * (videoWidth.toFloat() / videoHeight)
-            val heightPx = with(LocalDensity.current) { height.toPx().toInt() }
-            val widthPx = with(LocalDensity.current) { width.toPx().toInt() }
+        if (spriteData.isNotEmpty()) {
+            val position = (duration * seekProgress.toDouble()).milliseconds
+            spriteData.firstOrNull { position >= it.start && position < it.end }?.let { s ->
+                val height = 160.dp
+                val width = height * (s.w.toFloat() / s.h)
+                val heightPx = with(LocalDensity.current) { height.toPx().toInt() }
+                val widthPx = with(LocalDensity.current) { width.toPx().toInt() }
 
-            AsyncImage(
-                modifier =
-                    Modifier
-                        .width(width)
-                        .height(height)
-                        .background(Color.Black)
-                        .border(1.5.dp, color = MaterialTheme.colorScheme.border),
-                model =
-                    ImageRequest
-                        .Builder(context)
-                        .data(previewImageUrl)
-                        .memoryCachePolicy(CachePolicy.ENABLED)
-                        .transformations(
-                            CoilPreviewTransformation(
-                                widthPx,
-                                heightPx,
-                                duration,
-                                (duration * seekProgress).toLong(),
-                            ),
-                        ).build(),
-                contentScale = ContentScale.None,
-                imageLoader = imageLoader,
-                contentDescription = null,
-                placeholder = placeHolder,
-            )
+                AsyncImage(
+                    modifier =
+                        Modifier
+                            .width(width)
+                            .height(height)
+                            .background(Color.Black)
+                            .border(1.5.dp, color = MaterialTheme.colorScheme.border),
+                    model =
+                        ImageRequest
+                            .Builder(context)
+                            .data(s.url)
+                            .memoryCachePolicy(CachePolicy.ENABLED)
+                            .transformations(
+                                CoilPreviewTransformation(
+                                    s,
+                                    widthPx,
+                                    heightPx,
+                                ),
+                            ).build(),
+                    contentScale = ContentScale.None,
+                    imageLoader = imageLoader,
+                    contentDescription = null,
+                    placeholder = placeHolder,
+                )
+            }
         }
         Text(
             text = (seekProgress * duration / 1000).toLong().seconds.toString(),
@@ -661,6 +653,7 @@ private fun PlaybackOverlayPreview() {
                     screenshotUrl = "",
                     streams = mapOf(),
                     spriteUrl = "",
+                    vttUrl = "",
                     duration = 600.2,
                     resumeTime = 0.0,
                     videoCodec = "h264",
@@ -703,7 +696,6 @@ private fun PlaybackOverlayPreview() {
             seekPreviewEnabled = true,
             nextEnabled = true,
             seekEnabled = true,
-            spriteImageLoaded = false,
             moreButtonOptions = MoreButtonOptions(mapOf()),
             subtitleIndex = 1,
             modifier =
@@ -735,6 +727,7 @@ private fun PlaybackOverlayPreview() {
                         format = Format.Builder().build(),
                     ),
                 ),
+            spriteData = emptyList(),
             videoDecoder = "OMX.video.decoder",
             audioDecoder = "OMX.audio.decoder",
         )

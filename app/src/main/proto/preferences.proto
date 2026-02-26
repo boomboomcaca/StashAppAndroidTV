@@ -87,16 +87,21 @@ enum StreamChoice{
 
 enum Resolution {
   UNSPECIFIED = 0;
-  RES_240P = 1;
-  RES_480P = 2;
+  RES_2160P = 1;
+  RES_1080P = 2;
   RES_720P = 3;
-  RES_1080P = 4;
-  RES_2160P = 6;
+  RES_480P = 4;
+  RES_240P = 5;
 }
 
 enum PlaybackHttpClient{
   OKHTTP = 0;
   BUILTIN = 1;
+}
+
+enum PlaybackBackend{
+  EXO_PLAYER = 0;
+  MPV = 1;
 }
 
 message PlaybackPreferences {
@@ -119,6 +124,7 @@ message PlaybackPreferences {
   repeated string direct_play_video = 16;
   repeated string direct_play_audio = 17;
   repeated string direct_play_format = 18;
+  PlaybackBackend playback_backend = 19;
 }
 
 message CachePreferences {
@@ -147,6 +153,10 @@ message SearchPreferences {
   int64 search_delay_ms = 2;
 }
 
+message ScreensaverPreferences {
+  bool enabled = 1;
+}
+
 message StashPreferences {
   PinPreferences pin_preferences = 1;
   InterfacePreferences interface_preferences = 2;
@@ -155,6 +165,7 @@ message StashPreferences {
   UpdatePreferences update_preferences = 5;
   AdvancedPreferences advanced_preferences = 6;
   SearchPreferences search_preferences = 7;
+  ScreensaverPreferences screensaver_preferences = 9;
 
   bool preferences_migrated_v1 = 8;
 }

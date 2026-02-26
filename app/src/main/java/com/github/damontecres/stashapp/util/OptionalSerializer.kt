@@ -16,8 +16,6 @@ import kotlinx.serialization.descriptors.element
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.modules.SerializersModule
 import org.json.JSONArray
 import org.json.JSONObject
@@ -51,6 +49,11 @@ val OptionalSerializersModule =
 @OptIn(ExperimentalSerializationApi::class)
 val StashParcelable =
     Parcelable {
+        serializersModule = OptionalSerializersModule
+    }
+
+val StashJson =
+    Json {
         serializersModule = OptionalSerializersModule
     }
 
