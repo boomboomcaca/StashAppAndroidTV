@@ -882,10 +882,8 @@ fun PlaybackPageContent(
                                     currentSeekProgress >= 0 &&
                                     player.duration > 0
             if (shouldShowPreview) {
-                val previewImageUrl = scene.item.spriteUrl
                 val imageLoader = coil3.SingletonImageLoader.get(LocalContext.current)
-                val spriteImageLoadedState = spriteImageLoaded
-                val yOffsetDp = 180.dp + (if (spriteImageLoadedState) 160.dp else 24.dp)
+                val yOffsetDp = 180.dp + (if (spriteImageLoaded.isNotEmpty()) 160.dp else 24.dp)
                 val heightPx = with(LocalDensity.current) { yOffsetDp.toPx().toInt() }
 
                 SeekPreviewImage(
@@ -895,13 +893,10 @@ fun PlaybackPageContent(
                             xPercentage = currentSeekProgress.coerceIn(0f, 1f),
                             yOffset = heightPx,
                         ),
-                    imageLoaded = spriteImageLoadedState,
-                    previewImageUrl = previewImageUrl,
                     imageLoader = imageLoader,
                     duration = player.duration,
                     seekProgress = currentSeekProgress,
-                    videoWidth = scene.item.videoWidth,
-                    videoHeight = scene.item.videoHeight,
+                    spriteData = spriteImageLoaded,
                     placeHolder = ColorPainter(Color(0xFF1E1E1E)),
                 )
             }

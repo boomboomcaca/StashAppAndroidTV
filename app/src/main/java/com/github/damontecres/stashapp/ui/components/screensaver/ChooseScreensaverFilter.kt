@@ -51,6 +51,7 @@ import com.github.damontecres.stashapp.util.showToastOnMain
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToByteArray
 import java.io.File
@@ -165,7 +166,7 @@ data class ChooseScreensaverFilterState(
 @Serializable
 data class ScreensaverFilter(
     val savedFilterId: String?,
-    val filter: FilterArgs,
+    @Contextual val filter: FilterArgs,
 ) {
     companion object {
         fun makeDefault() =

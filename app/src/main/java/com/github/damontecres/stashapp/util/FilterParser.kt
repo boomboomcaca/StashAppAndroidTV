@@ -14,7 +14,8 @@ import com.github.damontecres.stashapp.api.type.IntCriterionInput
 import com.github.damontecres.stashapp.api.type.MultiCriterionInput
 import com.github.damontecres.stashapp.api.type.OrientationCriterionInput
 import com.github.damontecres.stashapp.api.type.OrientationEnum
-import com.github.damontecres.stashapp.api.type.PHashDuplicationCriterionInput
+import com.github.damontecres.stashapp.api.type.DuplicationCriterionInput
+import com.github.damontecres.stashapp.api.type.FileDuplicationCriterionInput
 import com.github.damontecres.stashapp.api.type.PhashDistanceCriterionInput
 import com.github.damontecres.stashapp.api.type.ResolutionCriterionInput
 import com.github.damontecres.stashapp.api.type.ResolutionEnum
@@ -245,9 +246,19 @@ class FilterParser(
             null
         }
 
-    fun convertPHashDuplicationCriterionInput(it: Map<String, *>?): PHashDuplicationCriterionInput? =
+    fun convertDuplicationCriterionInput(it: Map<String, *>?): DuplicationCriterionInput? =
         if (it != null) {
-            PHashDuplicationCriterionInput(
+            DuplicationCriterionInput(
+                duplicated = Optional.presentIfNotNull(it["value"]?.toString()?.toBoolean()),
+                distance = Optional.presentIfNotNull(it["distance"]?.toString()?.toInt()),
+            )
+        } else {
+            null
+        }
+
+    fun convertFileDuplicationCriterionInput(it: Map<String, *>?): FileDuplicationCriterionInput? =
+        if (it != null) {
+            FileDuplicationCriterionInput(
                 duplicated = Optional.presentIfNotNull(it["value"]?.toString()?.toBoolean()),
                 distance = Optional.presentIfNotNull(it["distance"]?.toString()?.toInt()),
             )
