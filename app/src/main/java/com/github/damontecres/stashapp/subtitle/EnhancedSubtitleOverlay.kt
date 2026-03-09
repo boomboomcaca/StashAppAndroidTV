@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -599,6 +601,29 @@ private fun DictionaryDialog(
                                         modifier = Modifier.padding(start = 6.dp, bottom = 4.dp, top = 2.dp)
                                     )
                                 }
+                            }
+                            
+                            // Etymology section
+                            if (!entry.etymology.isNullOrBlank()) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Divider(
+                                    color = Color(0xFFF2F6FA).copy(alpha = 0.2f),
+                                    thickness = 1.dp,
+                                    modifier = Modifier.padding(bottom = 12.dp)
+                                )
+                                TvText(
+                                    text = "词根/词源",
+                                    color = Color(0xFF4DA3FF),
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(bottom = 4.dp)
+                                )
+                                TvText(
+                                    text = entry.etymology,
+                                    color = Color(0xFFF2F6FA).copy(alpha = 0.9f),
+                                    fontSize = 22.sp,
+                                    lineHeight = 28.sp
+                                )
                             }
                         }
                     }

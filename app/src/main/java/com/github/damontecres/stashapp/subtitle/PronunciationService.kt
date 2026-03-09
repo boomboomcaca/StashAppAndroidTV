@@ -15,11 +15,11 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import okhttp3.Request
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.io.File
 import java.io.FileOutputStream
-import java.io.InputStream
-import java.net.HttpURLConnection
-import java.net.URL
+import java.io.IOException
 import java.net.URLEncoder
 import java.util.concurrent.ConcurrentHashMap
 
@@ -62,7 +62,7 @@ class PronunciationService private constructor(context: Context) {
             else -> language.lowercase()
         }
         
-        val baseUrl = server.url.trimEnd('/')
+        val baseUrl = com.github.damontecres.stashapp.util.StashClient.getServerRoot(server.url).trimEnd('/')
         val encodedText = URLEncoder.encode(word, "UTF-8")
         val encodedLang = URLEncoder.encode(langCode, "UTF-8")
         val url = "$baseUrl/tts/pronounce?text=$encodedText&lang=$encodedLang"
@@ -109,64 +109,47 @@ class PronunciationService private constructor(context: Context) {
         val tempFile = File(context.cacheDir, "pronunciation_${System.currentTimeMillis()}.mp3")
         registerTempFile(tempFile)
         
-        val connection = URL(url).openConnection() as HttpURLConnection
-        connection.connectTimeout = 5000
-        connection.readTimeout = 10000
-        connection.setRequestProperty("User-Agent", "StashApp/1.0")
+        val server = currentServer ?: throw Exception("未连接到服务器")
+        val client = server.okHttpClient
         
-        val server = currentServer
-        if (!server?.apiKey.isNullOrBlank()) {
-            connection.setRequestProperty(Constants.STASH_API_HEADER, server!!.apiKey!!.trim())
-        }
-        
-        connection.connect()
-        
-        // Handle redirects
-        var finalConnection = connection
-        var redirectCount = 0
-        while (redirectCount < 5 && (finalConnection.responseCode == HttpURLConnection.HTTP_MOVED_TEMP ||
-                finalConnection.responseCode == HttpURLConnection.HTTP_MOVED_PERM ||
-                finalConnection.responseCode == HttpURLConnection.HTTP_SEE_OTHER)) {
-            redirectCount++
-            val location = finalConnection.getHeaderField("Location")
-            if (location != null) {
-                finalConnection.disconnect()
-                finalConnection = URL(location).openConnection() as HttpURLConnection
-                finalConnection.connectTimeout = 5000
-                finalConnection.readTimeout = 10000
-                finalConnection.setRequestProperty("User-Agent", "StashApp/1.0")
-                if (!server?.apiKey.isNullOrBlank()) {
-                    finalConnection.setRequestProperty(Constants.STASH_API_HEADER, server!!.apiKey!!.trim())
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", "StashApp/1.0")
+            .build()
+            
+        return withContext(Dispatchers.IO) {
+            try {
+                val response = client.newCall(request).execute()
+                if (!response.isSuccessful) {
+                    deleteTempFile(tempFile.absolutePath)
+                    throw IOException("HTTP error: ${response.code} - ${response.message}")
                 }
-                finalConnection.connect()
-            } else {
-                break
+                
+                val body = response.body ?: run {
+                    deleteTempFile(tempFile.absolutePath)
+                    throw IOException("Response body is empty")
+                }
+                
+                // Check content type
+                val contentType = body.contentType()?.toString() ?: ""
+                if (!contentType.startsWith("audio/", ignoreCase = true) &&
+                    !contentType.startsWith("application/octet-stream", ignoreCase = true)) {
+                    body.close()
+                    deleteTempFile(tempFile.absolutePath)
+                    throw Exception("服务器返回的不是音频文件 (Content-Type: $contentType)")
+                }
+                
+                body.byteStream().use { input ->
+                    FileOutputStream(tempFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                tempFile
+            } catch (e: Exception) {
+                deleteTempFile(tempFile.absolutePath)
+                throw e
             }
         }
-        
-        if (finalConnection.responseCode != HttpURLConnection.HTTP_OK) {
-            finalConnection.disconnect()
-            deleteTempFile(tempFile.absolutePath)
-            throw Exception("HTTP error: ${finalConnection.responseCode} - ${finalConnection.responseMessage}")
-        }
-        
-        // Check content type
-        val contentType = finalConnection.contentType ?: ""
-        if (!contentType.startsWith("audio/", ignoreCase = true) &&
-            !contentType.startsWith("application/octet-stream", ignoreCase = true)) {
-            finalConnection.disconnect()
-            deleteTempFile(tempFile.absolutePath)
-            throw Exception("服务器返回的不是音频文件 (Content-Type: $contentType)")
-        }
-        
-        val inputStream: InputStream = finalConnection.inputStream
-        FileOutputStream(tempFile).use { output ->
-            inputStream.copyTo(output)
-        }
-        inputStream.close()
-        finalConnection.disconnect()
-        
-        return tempFile
     }
     
     /**

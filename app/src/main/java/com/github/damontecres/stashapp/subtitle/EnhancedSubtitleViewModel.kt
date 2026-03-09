@@ -3,6 +3,7 @@ package com.github.damontecres.stashapp.subtitle
 import android.app.Application
 import android.content.SharedPreferences
 import android.util.Log
+import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.apollographql.apollo.ApolloClient
@@ -272,6 +273,9 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
             pronunciationService?.playPronunciation(word, _detectedLanguage.value)
                 ?.onFailure { error ->
                     Log.e(TAG, "Failed to play pronunciation", error)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "朗读失败: ${error.message ?: "未知错误"}", Toast.LENGTH_SHORT).show()
+                    }
                 }
         }
     }
