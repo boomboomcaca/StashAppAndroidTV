@@ -63,7 +63,7 @@ class DictionaryService(
                                 examples = def.examples
                             )
                         },
-                        etymology = response.etymology
+                        morphology = response.morphology
                     )
                     
                     // Cache the entry with size limit

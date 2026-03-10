@@ -27,7 +27,7 @@ data class DictionaryEntry(
     val word: String,
     val pronunciation: String? = null,
     val definitions: List<DictionaryDefinition>,
-    val etymology: String? = null,
+    val morphology: String? = null,
     val frequency: Int? = null
 )
 

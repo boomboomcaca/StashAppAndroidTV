@@ -589,8 +589,7 @@ private fun DictionaryDialog(
                                     text = definition.meaning,
                                     color = Color(0xFFF2F6FA),
                                     fontSize = 28.sp,
-                                    lineHeight = 34.sp,
-                                    modifier = Modifier.padding(vertical = 6.dp)
+                                    lineHeight = 34.sp
                                 )
                                 definition.examples.takeIf { it.isNotEmpty() }?.forEach { example ->
                                     TvText(
@@ -603,27 +602,19 @@ private fun DictionaryDialog(
                                 }
                             }
                             
-                            // Etymology section
-                            if (!entry.etymology.isNullOrBlank()) {
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Divider(
-                                    color = Color(0xFFF2F6FA).copy(alpha = 0.2f),
-                                    thickness = 1.dp,
-                                    modifier = Modifier.padding(bottom = 12.dp)
-                                )
-                                TvText(
-                                    text = "词根/词源",
-                                    color = Color(0xFF4DA3FF),
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(bottom = 4.dp)
-                                )
-                                TvText(
-                                    text = entry.etymology,
-                                    color = Color(0xFFF2F6FA).copy(alpha = 0.9f),
-                                    fontSize = 22.sp,
-                                    lineHeight = 28.sp
-                                )
+                            // Morphology section (Word Root) - Simplified like Web
+                            if (!entry.morphology.isNullOrBlank()) {
+                                // Handle multi-line morphology (word root breakdown) with consistent spacing
+                                entry.morphology.split("\n").forEach { line ->
+                                    if (line.isNotBlank()) {
+                                        TvText(
+                                            text = line.trim(),
+                                            color = Color(0xFFF2F6FA).copy(alpha = 0.9f),
+                                            fontSize = 28.sp,
+                                            lineHeight = 34.sp
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

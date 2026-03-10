@@ -7,7 +7,6 @@ mutation OllamaExplainWord($input: OllamaExplainWordInput!) {
       meaning
       examples
     }
-    etymology
+    morphology
   }
 }
-
