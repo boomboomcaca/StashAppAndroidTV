@@ -495,8 +495,8 @@ fun PlaybackPageContent(
     val videoFilter by viewModel.videoFilter.observeAsState()
     
     // Enhanced Subtitle state
-    var enhancedSubtitlesEnabled by rememberSaveable { mutableStateOf(false) }
     val enhancedSubtitleViewModel: com.github.damontecres.stashapp.subtitle.EnhancedSubtitleViewModel = viewModel()
+    val enhancedSubtitlesEnabled by enhancedSubtitleViewModel.isEnabled.collectAsState()
     val autoPauseEnabled by enhancedSubtitleViewModel.autoPauseEnabled.collectAsState()
     val subtitleScale by enhancedSubtitleViewModel.fontSize.collectAsState()
     
@@ -995,7 +995,7 @@ fun PlaybackPageContent(
                             }
                             
                             PlaybackAction.ToggleEnhancedSubtitles -> {
-                                enhancedSubtitlesEnabled = !enhancedSubtitlesEnabled
+                                enhancedSubtitleViewModel.toggleEnabled()
                                 controllerViewState.hideControls()
                             }
                             
@@ -1005,6 +1005,10 @@ fun PlaybackPageContent(
 
                             is PlaybackAction.SubtitleScale -> {
                                 enhancedSubtitleViewModel.setFontSize(it.value)
+                            }
+
+                            is PlaybackAction.SubtitlePosition -> {
+                                enhancedSubtitleViewModel.setPosition(it.value)
                             }
                         }
                     },
