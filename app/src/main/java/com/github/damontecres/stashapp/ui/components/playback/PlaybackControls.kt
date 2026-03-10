@@ -115,6 +115,10 @@ sealed interface PlaybackAction {
     data class SubtitleScale(
         val value: Float,
     ) : PlaybackAction
+
+    data class SubtitlePosition(
+        val value: Float,
+    ) : PlaybackAction
 }
 
 @OptIn(UnstableApi::class)
@@ -385,7 +389,15 @@ fun LeftPlaybackButtons(
 }
 
 private val speedOptions = listOf(".25", ".5", ".75", ".8", ".9", "1.0", "1.25", "1.5", "2.0")
-private val subtitleScaleOptions = listOf("0.5", "0.75", "1.0", "1.25", "1.5", "1.75", "2.0", "2.5", "3.0")
+private val subtitleScaleOptions = listOf(
+    "1.0", "1.05", "1.1", "1.15", "1.2", "1.25", "1.3", "1.35", "1.4", "1.45", "1.5"
+)
+private val subtitlePositionOptions = listOf(
+    "Standard" to 0.0f,
+    "Lower" to 0.15f,
+    "Lowest" to 0.25f,
+    "Bottom" to 0.35f
+)
 
 @Composable
 fun RightPlaybackButtons(
