@@ -498,6 +498,7 @@ fun PlaybackPageContent(
     var enhancedSubtitlesEnabled by rememberSaveable { mutableStateOf(false) }
     val enhancedSubtitleViewModel: com.github.damontecres.stashapp.subtitle.EnhancedSubtitleViewModel = viewModel()
     val autoPauseEnabled by enhancedSubtitleViewModel.autoPauseEnabled.collectAsState()
+    val subtitleScale by enhancedSubtitleViewModel.fontSize.collectAsState()
     
     // Initialize server for enhanced subtitle ViewModel
     LaunchedEffect(server) {
@@ -1001,6 +1002,10 @@ fun PlaybackPageContent(
                             PlaybackAction.ToggleAutoPause -> {
                                 enhancedSubtitleViewModel.toggleAutoPause()
                             }
+
+                            is PlaybackAction.SubtitleScale -> {
+                                enhancedSubtitleViewModel.setFontSize(it.value)
+                            }
                         }
                     },
                     onSeekBarChange = seekBarState::onValueChange,
@@ -1043,6 +1048,7 @@ fun PlaybackPageContent(
                     audioDecoder = audioDecoder,
                     enhancedSubtitlesEnabled = enhancedSubtitlesEnabled,
                     autoPauseEnabled = autoPauseEnabled,
+                    subtitleScale = subtitleScale,
                     spriteData = spriteImageLoaded,
                 )
             }

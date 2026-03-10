@@ -111,6 +111,10 @@ sealed interface PlaybackAction {
     data class Scale(
         val scale: ContentScale,
     ) : PlaybackAction
+
+    data class SubtitleScale(
+        val value: Float,
+    ) : PlaybackAction
 }
 
 @OptIn(UnstableApi::class)
@@ -136,6 +140,7 @@ fun PlaybackControls(
     playbackSpeed: Float,
     scale: ContentScale,
     seekBarIntervals: Int,
+    subtitleScale: Float = 1.0f,
     enhancedSubtitlesEnabled: Boolean = false,
     autoPauseEnabled: Boolean = false,
     modifier: Modifier = Modifier,
@@ -216,6 +221,7 @@ fun PlaybackControls(
                 audioIndex = audioIndex,
                 playbackSpeed = playbackSpeed,
                 scale = scale,
+                subtitleScale = subtitleScale,
                 enhancedSubtitlesEnabled = enhancedSubtitlesEnabled,
                 autoPauseEnabled = autoPauseEnabled,
             )
@@ -379,6 +385,7 @@ fun LeftPlaybackButtons(
 }
 
 private val speedOptions = listOf(".25", ".5", ".75", ".8", ".9", "1.0", "1.25", "1.5", "2.0")
+private val subtitleScaleOptions = listOf("0.5", "0.75", "1.0", "1.25", "1.5", "1.75", "2.0", "2.5", "3.0")
 
 @Composable
 fun RightPlaybackButtons(
@@ -391,6 +398,7 @@ fun RightPlaybackButtons(
     audioIndex: Int?,
     playbackSpeed: Float,
     scale: ContentScale,
+    subtitleScale: Float = 1.0f,
     enhancedSubtitlesEnabled: Boolean = false,
     autoPauseEnabled: Boolean = false,
     modifier: Modifier = Modifier,
@@ -399,6 +407,7 @@ fun RightPlaybackButtons(
     var showAudioDialog by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
     var showScaleDialog by remember { mutableStateOf(false) }
+    var showSubtitleScaleDialog by remember { mutableStateOf(false) }
     Row(
         modifier = modifier.focusGroup(),
         horizontalArrangement = Arrangement.spacedBy(buttonSpacing),
@@ -437,7 +446,14 @@ fun RightPlaybackButtons(
     }
     // Removed caption dialog - only enhanced subtitles are available
     if (showOptionsDialog) {
-        val options = listOf("Audio Track", "Playback Speed", "Video Scale")
+        val options = buildList {
+            add("Audio Track")
+            add("Playback Speed")
+            add("Video Scale")
+            if (enhancedSubtitlesEnabled) {
+                add("Subtitle Scale")
+            }
+        }
         BottomDialog(
             choices = options,
             currentChoice = null,
@@ -450,6 +466,7 @@ fun RightPlaybackButtons(
                     0 -> showAudioDialog = true
                     1 -> showSpeedDialog = true
                     2 -> showScaleDialog = true
+                    3 -> showSubtitleScaleDialog = true
                 }
             },
             gravity = Gravity.END,
@@ -493,6 +510,20 @@ fun RightPlaybackButtons(
             },
             onSelectChoice = { index, _ ->
                 onPlaybackActionClick.invoke(PlaybackAction.Scale(playbackScaleOptions.keys.toList()[index]))
+            },
+            gravity = Gravity.END,
+        )
+    }
+    if (showSubtitleScaleDialog) {
+        BottomDialog(
+            choices = subtitleScaleOptions,
+            currentChoice = subtitleScaleOptions.indexOf(subtitleScale.toString()),
+            onDismissRequest = {
+                onControllerInteraction.invoke()
+                showSubtitleScaleDialog = false
+            },
+            onSelectChoice = { _, value ->
+                onPlaybackActionClick.invoke(PlaybackAction.SubtitleScale(value.toFloat()))
             },
             gravity = Gravity.END,
         )
@@ -778,6 +809,7 @@ private fun RightPlaybackButtonsPreview() {
                 audioIndex = null,
                 playbackSpeed = 1.0f,
                 scale = ContentScale.Fit,
+                subtitleScale = 1.0f,
             )
             PlaybackFaButton(
                 iconRes = R.string.fa_thumbs_up,
