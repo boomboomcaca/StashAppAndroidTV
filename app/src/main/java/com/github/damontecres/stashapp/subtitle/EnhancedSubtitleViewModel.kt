@@ -64,6 +64,9 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
     // UI state
     private val _isVisible = MutableStateFlow(false)
     val isVisible: StateFlow<Boolean> = _isVisible.asStateFlow()
+
+    private val _isEnabled = MutableStateFlow(false)
+    val isEnabled: StateFlow<Boolean> = _isEnabled.asStateFlow()
     
     private val _fontSize = MutableStateFlow(1.0f)
     val fontSize: StateFlow<Float> = _fontSize.asStateFlow()
@@ -135,6 +138,7 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
     }
     
     private fun loadPreferences() {
+        _isEnabled.value = prefs.getBoolean("enabled", false)
         _fontSize.value = prefs.getFloat("fontSize", 1.0f)
         _subtitlePosition.value = prefs.getFloat("position", 0f)
         _autoPauseEnabled.value = prefs.getBoolean("autoPause", false)
@@ -142,6 +146,7 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
     
     private fun savePreferences() {
         prefs.edit()
+            .putBoolean("enabled", _isEnabled.value)
             .putFloat("fontSize", _fontSize.value)
             .putFloat("position", _subtitlePosition.value)
             .putBoolean("autoPause", _autoPauseEnabled.value)
@@ -309,6 +314,16 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
     fun toggleVisibility() {
         _isVisible.value = !_isVisible.value
     }
+
+    fun toggleEnabled() {
+        _isEnabled.value = !_isEnabled.value
+        savePreferences()
+    }
+
+    fun setEnabled(enabled: Boolean) {
+        _isEnabled.value = enabled
+        savePreferences()
+    }
     
     fun setVisible(visible: Boolean) {
         _isVisible.value = visible
@@ -333,6 +348,11 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
      */
     fun adjustPosition(delta: Float) {
         _subtitlePosition.value = (_subtitlePosition.value + delta).coerceIn(-1f, 1f)
+        savePreferences()
+    }
+
+    fun setPosition(position: Float) {
+        _subtitlePosition.value = position.coerceIn(-1f, 1f)
         savePreferences()
     }
     

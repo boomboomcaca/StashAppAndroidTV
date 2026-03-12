@@ -165,6 +165,7 @@ fun PlaybackOverlay(
     audioDecoder: String?,
     enhancedSubtitlesEnabled: Boolean = false,
     autoPauseEnabled: Boolean = false,
+    subtitleScale: Float = 1.0f,
     spriteData: List<SpriteData>,
     modifier: Modifier = Modifier,
     seekPreviewPlaceholder: Painter? = null,
@@ -319,6 +320,7 @@ fun PlaybackOverlay(
                     showDebugInfo = showDebugInfo,
                     enhancedSubtitlesEnabled = enhancedSubtitlesEnabled,
                     autoPauseEnabled = autoPauseEnabled,
+                    subtitleScale = subtitleScale,
                     onSeekProgress = {
                         seekProgress = it
                         onSeekBarChange(it)
@@ -705,6 +707,7 @@ private fun PlaybackOverlayPreview() {
             audioOptions = listOf(),
             playbackSpeed = 1.0f,
             scale = ContentScale.Fit,
+            subtitleScale = 1.0f,
             playlistInfo = PlaylistInfo(3, 45, 20),
             tracks =
                 listOf(

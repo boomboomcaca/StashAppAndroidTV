@@ -584,6 +584,21 @@ private fun DictionaryDialog(
                     }
                     entry != null -> {
                         Column(modifier = Modifier.fillMaxWidth()) {
+                            // Morphology section (Word Root) - Simplified like Web
+                            if (!entry.morphology.isNullOrBlank()) {
+                                // Handle multi-line morphology (word root breakdown) with consistent spacing
+                                entry.morphology.split("\n").forEach { line ->
+                                    if (line.isNotBlank()) {
+                                        TvText(
+                                            text = line.trim(),
+                                            color = Color(0xFFF2F6FA).copy(alpha = 0.9f),
+                                            fontSize = 28.sp,
+                                            lineHeight = 34.sp
+                                        )
+                                    }
+                                }
+                            }
+
                             entry.definitions.forEach { definition ->
                                 TvText(
                                     text = definition.meaning,
@@ -599,21 +614,6 @@ private fun DictionaryDialog(
                                         lineHeight = 26.sp,
                                         modifier = Modifier.padding(start = 6.dp, bottom = 4.dp, top = 2.dp)
                                     )
-                                }
-                            }
-                            
-                            // Morphology section (Word Root) - Simplified like Web
-                            if (!entry.morphology.isNullOrBlank()) {
-                                // Handle multi-line morphology (word root breakdown) with consistent spacing
-                                entry.morphology.split("\n").forEach { line ->
-                                    if (line.isNotBlank()) {
-                                        TvText(
-                                            text = line.trim(),
-                                            color = Color(0xFFF2F6FA).copy(alpha = 0.9f),
-                                            fontSize = 28.sp,
-                                            lineHeight = 34.sp
-                                        )
-                                    }
                                 }
                             }
                         }
