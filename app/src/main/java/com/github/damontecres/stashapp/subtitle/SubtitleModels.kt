@@ -28,7 +28,8 @@ data class DictionaryEntry(
     val pronunciation: String? = null,
     val definitions: List<DictionaryDefinition>,
     val morphology: String? = null,
-    val frequency: Int? = null
+    val frequency: Int? = null,
+    val aiSource: String? = null
 )
 
 data class FavoriteWord(

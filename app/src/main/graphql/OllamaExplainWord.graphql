@@ -8,5 +8,6 @@ mutation OllamaExplainWord($input: OllamaExplainWordInput!) {
       examples
     }
     morphology
+    aiSource
   }
 }

@@ -45,7 +45,9 @@ class DictionaryService(
                 val input = OllamaExplainWordInput(
                     word = word,
                     context = context,
-                    language = Optional.presentIfNotNull(language.takeIf { it.isNotEmpty() })
+                    language = Optional.presentIfNotNull(language.takeIf { it.isNotEmpty() }),
+                    model = Optional.absent(),
+                    provider = Optional.absent() // Pass provider if configured, currently absent
                 )
                 
                 val mutation = OllamaExplainWordMutation(input)
@@ -63,7 +65,8 @@ class DictionaryService(
                                 examples = def.examples
                             )
                         },
-                        morphology = response.morphology
+                        morphology = response.morphology,
+                        aiSource = response.aiSource
                     )
                     
                     // Cache the entry with size limit

@@ -510,14 +510,40 @@ private fun DictionaryDialog(
                     }
                     
                     // Centered word
-                    TvText(
-                        text = word,
-                        fontSize = 28.sp,
-                        color = Color(0xFFF2F6FA),
-                        fontWeight = FontWeight.Bold,
+                    Row(
                         modifier = Modifier.align(Alignment.Center),
-                        textAlign = TextAlign.Center
-                    )
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TvText(
+                            text = word,
+                            fontSize = 28.sp,
+                            color = Color(0xFFF2F6FA),
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
+                        
+                        entry?.aiSource?.let { aiSource ->
+                            val isGemini = aiSource.equals("gemini", ignoreCase = true)
+                            val tagBgColor = if (isGemini) Color(0xFF4285F4).copy(alpha = 0.2f) else Color(0xFFFBC02D).copy(alpha = 0.2f)
+                            val tagBorderColor = if (isGemini) Color(0xFF4285F4).copy(alpha = 0.5f) else Color(0xFFFBC02D).copy(alpha = 0.5f)
+                            val tagTextColor = if (isGemini) Color(0xFF8AB4F8) else Color(0xFFFDE293)
+                            
+                            Box(
+                                modifier = Modifier
+                                    .padding(start = 8.dp)
+                                    .background(tagBgColor, RoundedCornerShape(4.dp))
+                                    .border(1.dp, tagBorderColor, RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                TvText(
+                                    text = aiSource.uppercase(),
+                                    fontSize = 12.sp,
+                                    color = tagTextColor,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
                     
                     // Favorite star positioned on the right
                     val favoriteInteractionSource = remember { MutableInteractionSource() }
