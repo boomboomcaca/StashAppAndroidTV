@@ -436,7 +436,7 @@ private fun DictionaryDialog(
 ) {
     val favoriteFocusRequester = remember { FocusRequester() }
     val pronunciationFocusRequester = remember { FocusRequester() }
-    val geminiFocusRequester = remember { FocusRequester() }
+    val groqFocusRequester = remember { FocusRequester() }
     val ollamaFocusRequester = remember { FocusRequester() }
     
     Dialog(
@@ -527,10 +527,10 @@ private fun DictionaryDialog(
                         )
                         
                         entry?.aiSource?.let { aiSource ->
-                            val isGemini = aiSource.equals("gemini", ignoreCase = true)
-                            val tagBgColor = if (isGemini) Color(0xFF4285F4).copy(alpha = 0.2f) else Color(0xFFFBC02D).copy(alpha = 0.2f)
-                            val tagBorderColor = if (isGemini) Color(0xFF4285F4).copy(alpha = 0.5f) else Color(0xFFFBC02D).copy(alpha = 0.5f)
-                            val tagTextColor = if (isGemini) Color(0xFF8AB4F8) else Color(0xFFFDE293)
+                            val isGroq = aiSource.equals("groq", ignoreCase = true)
+                            val tagBgColor = if (isGroq) Color(0xFF4285F4).copy(alpha = 0.2f) else Color(0xFFFBC02D).copy(alpha = 0.2f)
+                            val tagBorderColor = if (isGroq) Color(0xFF4285F4).copy(alpha = 0.5f) else Color(0xFFFBC02D).copy(alpha = 0.5f)
+                            val tagTextColor = if (isGroq) Color(0xFF8AB4F8) else Color(0xFFFDE293)
                             
                             Box(
                                 modifier = Modifier
@@ -569,7 +569,7 @@ private fun DictionaryDialog(
                             .handleDPadKeyEvents(
                                 onLeft = { pronunciationFocusRequester.tryRequestFocus() },
                                 onRight = { pronunciationFocusRequester.tryRequestFocus() },
-                                onDown = { geminiFocusRequester.tryRequestFocus() },
+                                onDown = { groqFocusRequester.tryRequestFocus() },
                                 onUp = onDismiss,
                                 onEnter = onToggleFavorite
                             )
@@ -596,7 +596,7 @@ private fun DictionaryDialog(
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val providers = listOf("gemini", "ollama")
+                    val providers = listOf("groq", "ollama")
                     providers.forEach { provider ->
                         val isSelected = selectedAiProvider == provider
                         val interactionSource = remember { MutableInteractionSource() }
@@ -613,7 +613,7 @@ private fun DictionaryDialog(
                         Box(
                             modifier = Modifier
                                 .padding(horizontal = 8.dp)
-                                .focusRequester(if (provider == "gemini") geminiFocusRequester else ollamaFocusRequester)
+                                .focusRequester(if (provider == "groq") groqFocusRequester else ollamaFocusRequester)
                                 .background(bgColor, RoundedCornerShape(20.dp))
                                 .border(
                                     width = 1.dp,
@@ -622,8 +622,8 @@ private fun DictionaryDialog(
                                 )
                                 .padding(horizontal = 12.dp, vertical = 4.dp)
                                 .handleDPadKeyEvents(
-                                    onLeft = { if (provider == "ollama") geminiFocusRequester.tryRequestFocus() },
-                                    onRight = { if (provider == "gemini") ollamaFocusRequester.tryRequestFocus() },
+                                    onLeft = { if (provider == "ollama") groqFocusRequester.tryRequestFocus() },
+                                    onRight = { if (provider == "groq") ollamaFocusRequester.tryRequestFocus() },
                                     onUp = { favoriteFocusRequester.tryRequestFocus() },
                                     onEnter = { onSelectAiProvider(provider) }
                                 )

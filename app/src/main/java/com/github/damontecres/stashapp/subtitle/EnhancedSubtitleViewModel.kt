@@ -77,7 +77,7 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
     private val _autoPauseEnabled = MutableStateFlow(false)
     val autoPauseEnabled: StateFlow<Boolean> = _autoPauseEnabled.asStateFlow()
     
-    private val _selectedAiProvider = MutableStateFlow("gemini")
+    private val _selectedAiProvider = MutableStateFlow("groq")
     val selectedAiProvider: StateFlow<String> = _selectedAiProvider.asStateFlow()
     
     // Track if currently auto-paused
@@ -145,7 +145,7 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
         _fontSize.value = prefs.getFloat("fontSize", 1.0f)
         _subtitlePosition.value = prefs.getFloat("position", 0f)
         _autoPauseEnabled.value = prefs.getBoolean("autoPause", false)
-        _selectedAiProvider.value = prefs.getString("aiProvider", "gemini") ?: "gemini"
+        _selectedAiProvider.value = prefs.getString("aiProvider", "groq") ?: "groq"
     }
     
     private fun savePreferences() {
