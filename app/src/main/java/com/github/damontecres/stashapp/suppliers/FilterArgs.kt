@@ -12,6 +12,13 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.jsonObject
+import com.github.damontecres.stashapp.filter.output.FilterWriter
+import com.github.damontecres.stashapp.util.Version
+import kotlinx.coroutines.runBlocking
 /**
  * Represents a filter that can be used to create a [StashPagingSource.DataSupplier].
  *
@@ -20,8 +27,9 @@ import kotlinx.serialization.encoding.Encoder
  * Optionally, a [DataSupplierOverride] can be provided which always overrides which data supplier to use.
  *
  * Note: Custom serializer used because Apollo-generated StashDataFilter lacks serializer support.
- * The objectFilter field is not serialized.
+ * The objectFilter field is now serialized to/from JSON.
  */
+@Serializable(with = FilterArgsSerializer::class)
 data class FilterArgs(
     val dataType: DataType,
     val name: String? = null,
@@ -91,6 +99,7 @@ private data class FilterArgsSurrogate(
     val name: String? = null,
     val findFilter: StashFindFilter? = null,
     val override: DataSupplierOverride? = null,
+    val serializedObjectFilter: String? = null,
 )
 
 /**
@@ -101,23 +110,61 @@ object FilterArgsSerializer : KSerializer<FilterArgs> {
     override val descriptor: SerialDescriptor = FilterArgsSurrogate.serializer().descriptor
 
     override fun serialize(encoder: Encoder, value: FilterArgs) {
+        val serializedObjectFilter = value.objectFilter?.let { filter ->
+            // Use runBlocking because FilterWriter is suspend
+            runBlocking {
+                val writer = FilterWriter(value.dataType) { _, _ -> emptyMap() }
+                val filterMap = writer.convertFilter(filter)
+                Json.encodeToJsonElement(filterMap).toString()
+            }
+        }
+
         val surrogate = FilterArgsSurrogate(
             dataType = value.dataType,
             name = value.name,
             findFilter = value.findFilter,
-            override = value.override
+            override = value.override,
+            serializedObjectFilter = serializedObjectFilter
         )
         encoder.encodeSerializableValue(FilterArgsSurrogate.serializer(), surrogate)
     }
 
     override fun deserialize(decoder: Decoder): FilterArgs {
         val surrogate = decoder.decodeSerializableValue(FilterArgsSurrogate.serializer())
+        val objectFilter = surrogate.serializedObjectFilter?.let { jsonString ->
+            try {
+                val json = Json.parseToJsonElement(jsonString).jsonObject
+                val filterMap = jsonToMap(json)
+                FilterParser(Version(0, 0, 0)).convertFilter(surrogate.dataType, filterMap)
+            } catch (ex: Exception) {
+                null
+            }
+        }
+
         return FilterArgs(
             dataType = surrogate.dataType,
             name = surrogate.name,
             findFilter = surrogate.findFilter,
-            objectFilter = null,
+            objectFilter = objectFilter,
             override = surrogate.override
         )
+    }
+
+    private fun jsonToMap(jsonObject: JsonObject): Map<String, Any?> {
+        return jsonObject.mapValues { (_, value) ->
+            // Simple conversion from JsonElement back to common types
+            // This is a bit naive but should work for FilterArgs
+            when {
+                value is kotlinx.serialization.json.JsonPrimitive -> {
+                    if (value.isString) value.content
+                    else value.content.toBooleanStrictOrNull() ?: value.content.toDoubleOrNull() ?: value.content
+                }
+                value is kotlinx.serialization.json.JsonArray -> {
+                    value.map { it.toString() } // MultiCriterion usually just needs IDs or strings
+                }
+                value is JsonObject -> jsonToMap(value)
+                else -> value.toString()
+            }
+        }
     }
 }
