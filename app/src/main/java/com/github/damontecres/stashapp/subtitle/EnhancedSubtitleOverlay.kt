@@ -196,20 +196,20 @@ fun EnhancedSubtitleOverlay(
         }
         
         // Dictionary dialog
+        val selectedAiProvider by viewModel.selectedAiProvider.collectAsState()
+        
         selectedWord?.let { word ->
-            Log.d("EnhancedSubtitleOverlay", "Displaying DictionaryDialog for word='$word', entry=${dictionaryEntry != null}, isLoading=$isLoadingDictionary")
             DictionaryDialog(
                 word = word,
                 entry = dictionaryEntry,
                 isLoading = isLoadingDictionary,
                 detectedLanguage = detectedLanguage,
                 isFavorite = favorites.any { it.word == word && it.language == detectedLanguage },
-                onDismiss = { 
-                    Log.d("EnhancedSubtitleOverlay", "DictionaryDialog dismissed")
-                    viewModel.selectWord(null) 
-                },
+                selectedAiProvider = selectedAiProvider,
+                onDismiss = { viewModel.selectWord(null) },
                 onPlayPronunciation = { viewModel.playPronunciation(word) },
-                onToggleFavorite = { viewModel.toggleFavorite(word) }
+                onToggleFavorite = { viewModel.toggleFavorite(word) },
+                onSelectAiProvider = { viewModel.setAiProvider(it) }
             )
         }
         
@@ -428,12 +428,16 @@ private fun DictionaryDialog(
     isLoading: Boolean,
     detectedLanguage: String,
     isFavorite: Boolean,
+    selectedAiProvider: String,
     onDismiss: () -> Unit,
     onPlayPronunciation: () -> Unit,
-    onToggleFavorite: () -> Unit
+    onToggleFavorite: () -> Unit,
+    onSelectAiProvider: (String) -> Unit
 ) {
     val favoriteFocusRequester = remember { FocusRequester() }
     val pronunciationFocusRequester = remember { FocusRequester() }
+    val geminiFocusRequester = remember { FocusRequester() }
+    val ollamaFocusRequester = remember { FocusRequester() }
     
     Dialog(
         onDismissRequest = onDismiss,
@@ -565,6 +569,7 @@ private fun DictionaryDialog(
                             .handleDPadKeyEvents(
                                 onLeft = { pronunciationFocusRequester.tryRequestFocus() },
                                 onRight = { pronunciationFocusRequester.tryRequestFocus() },
+                                onDown = { geminiFocusRequester.tryRequestFocus() },
                                 onUp = onDismiss,
                                 onEnter = onToggleFavorite
                             )
@@ -580,6 +585,62 @@ private fun DictionaryDialog(
                             fontSize = 24.sp,
                             color = Color(0xFFF2F6FA)
                         )
+                    }
+                }
+
+                // Provider selection row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp, bottom = 8.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val providers = listOf("gemini", "ollama")
+                    providers.forEach { provider ->
+                        val isSelected = selectedAiProvider == provider
+                        val interactionSource = remember { MutableInteractionSource() }
+                        val isFocused by interactionSource.collectIsFocusedAsState()
+                        
+                        val bgColor = when {
+                            isFocused -> Color(0xFF4A90E2).copy(alpha = 0.8f)
+                            isSelected -> Color(0xFF34495E)
+                            else -> Color.Transparent
+                        }
+                        
+                        val textColor = if (isSelected || isFocused) Color.White else Color.Gray
+                        
+                        Box(
+                            modifier = Modifier
+                                .padding(horizontal = 8.dp)
+                                .focusRequester(if (provider == "gemini") geminiFocusRequester else ollamaFocusRequester)
+                                .background(bgColor, RoundedCornerShape(20.dp))
+                                .border(
+                                    width = 1.dp,
+                                    color = if (isSelected) Color(0xFF4DA3FF) else Color.Transparent,
+                                    shape = RoundedCornerShape(20.dp)
+                                )
+                                .padding(horizontal = 12.dp, vertical = 4.dp)
+                                .handleDPadKeyEvents(
+                                    onLeft = { if (provider == "ollama") geminiFocusRequester.tryRequestFocus() },
+                                    onRight = { if (provider == "gemini") ollamaFocusRequester.tryRequestFocus() },
+                                    onUp = { favoriteFocusRequester.tryRequestFocus() },
+                                    onEnter = { onSelectAiProvider(provider) }
+                                )
+                                .focusable(interactionSource = interactionSource)
+                                .clickable(
+                                    interactionSource = interactionSource,
+                                    indication = null,
+                                    onClick = { onSelectAiProvider(provider) }
+                                )
+                        ) {
+                            TvText(
+                                text = provider.uppercase(),
+                                fontSize = 14.sp,
+                                color = textColor,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
                     }
                 }
 

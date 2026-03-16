@@ -77,6 +77,9 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
     private val _autoPauseEnabled = MutableStateFlow(false)
     val autoPauseEnabled: StateFlow<Boolean> = _autoPauseEnabled.asStateFlow()
     
+    private val _selectedAiProvider = MutableStateFlow("gemini")
+    val selectedAiProvider: StateFlow<String> = _selectedAiProvider.asStateFlow()
+    
     // Track if currently auto-paused
     private val _isAutoPaused = MutableStateFlow(false)
     val isAutoPaused: StateFlow<Boolean> = _isAutoPaused.asStateFlow()
@@ -142,6 +145,7 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
         _fontSize.value = prefs.getFloat("fontSize", 1.0f)
         _subtitlePosition.value = prefs.getFloat("position", 0f)
         _autoPauseEnabled.value = prefs.getBoolean("autoPause", false)
+        _selectedAiProvider.value = prefs.getString("aiProvider", "gemini") ?: "gemini"
     }
     
     private fun savePreferences() {
@@ -150,6 +154,7 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
             .putFloat("fontSize", _fontSize.value)
             .putFloat("position", _subtitlePosition.value)
             .putBoolean("autoPause", _autoPauseEnabled.value)
+            .putString("aiProvider", _selectedAiProvider.value)
             .apply()
     }
     
@@ -231,6 +236,21 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
     }
     
     /**
+     * Set AI provider
+     */
+    fun setAiProvider(provider: String) {
+        if (_selectedAiProvider.value != provider) {
+            _selectedAiProvider.value = provider
+            savePreferences()
+            
+            // If a word is currently selected, re-fetch with new provider
+            _selectedWord.value?.let { word ->
+                selectWord(word)
+            }
+        }
+    }
+    
+    /**
      * Handle word click/selection
      */
     fun selectWord(word: String?) {
@@ -250,6 +270,7 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
             
             val context = _currentCue.value?.text ?: ""
             val language = _detectedLanguage.value
+            val provider = _selectedAiProvider.value
             
             // Preload pronunciation audio file in background when dictionary dialog opens
             pronunciationService?.let { service ->
@@ -261,7 +282,7 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
                 }
             }
             
-            val entry = dictionaryService?.lookup(word, language, context)
+            val entry = dictionaryService?.lookup(word, language, context, provider)
             _dictionaryEntry.value = entry
             _isLoadingDictionary.value = false
             Log.d(TAG, "selectWord: lookup completed, entry=${entry != null}, isLoading=false")

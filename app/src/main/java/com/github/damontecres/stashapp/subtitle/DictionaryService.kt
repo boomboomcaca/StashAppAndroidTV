@@ -23,13 +23,14 @@ class DictionaryService(
     suspend fun lookup(
         word: String,
         language: String = "en",
-        context: String = ""
+        context: String = "",
+        provider: String? = null
     ): DictionaryEntry? {
         return withContext(Dispatchers.IO) {
             val cacheKey = if (context.isNotEmpty()) {
-                "${word.lowercase()}_${language}_${context.take(50)}"
+                "${word.lowercase()}_${language}_${provider ?: "default"}_${context.take(50)}"
             } else {
-                "${word.lowercase()}_${language}"
+                "${word.lowercase()}_${language}_${provider ?: "default"}"
             }
             
             // Check cache first
@@ -47,7 +48,7 @@ class DictionaryService(
                     context = context,
                     language = Optional.presentIfNotNull(language.takeIf { it.isNotEmpty() }),
                     model = Optional.absent(),
-                    provider = Optional.absent() // Pass provider if configured, currently absent
+                    provider = Optional.presentIfNotNull(provider)
                 )
                 
                 val mutation = OllamaExplainWordMutation(input)
