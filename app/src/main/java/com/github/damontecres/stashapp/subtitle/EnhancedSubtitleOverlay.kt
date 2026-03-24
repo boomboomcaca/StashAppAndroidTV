@@ -436,7 +436,7 @@ private fun DictionaryDialog(
 ) {
     val favoriteFocusRequester = remember { FocusRequester() }
     val pronunciationFocusRequester = remember { FocusRequester() }
-    val groqFocusRequester = remember { FocusRequester() }
+    val mistralFocusRequester = remember { FocusRequester() }
     val ollamaFocusRequester = remember { FocusRequester() }
     
     Dialog(
@@ -513,38 +513,42 @@ private fun DictionaryDialog(
                         )
                     }
                     
-                    // Centered word
-                    Row(
+                    // Centered word + pronunciation
+                    Column(
                         modifier = Modifier.align(Alignment.Center),
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        TvText(
-                            text = word,
-                            fontSize = 28.sp,
-                            color = Color(0xFFF2F6FA),
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TvText(
+                                text = word,
+                                fontSize = 28.sp,
+                                color = Color(0xFFF2F6FA),
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center
+                            )
                         
-                        entry?.aiSource?.let { aiSource ->
-                            val isGroq = aiSource.equals("groq", ignoreCase = true)
-                            val tagBgColor = if (isGroq) Color(0xFF4285F4).copy(alpha = 0.2f) else Color(0xFFFBC02D).copy(alpha = 0.2f)
-                            val tagBorderColor = if (isGroq) Color(0xFF4285F4).copy(alpha = 0.5f) else Color(0xFFFBC02D).copy(alpha = 0.5f)
-                            val tagTextColor = if (isGroq) Color(0xFF8AB4F8) else Color(0xFFFDE293)
+                            entry?.aiSource?.let { aiSource ->
+                                val isMistral = aiSource.equals("mistral", ignoreCase = true)
+                                val tagBgColor = if (isMistral) Color(0xFFFF7000).copy(alpha = 0.2f) else Color(0xFFFBC02D).copy(alpha = 0.2f)
+                                val tagBorderColor = if (isMistral) Color(0xFFFF7000).copy(alpha = 0.5f) else Color(0xFFFBC02D).copy(alpha = 0.5f)
+                                val tagTextColor = if (isMistral) Color(0xFFFFAB66) else Color(0xFFFDE293)
                             
-                            Box(
-                                modifier = Modifier
-                                    .padding(start = 8.dp)
-                                    .background(tagBgColor, RoundedCornerShape(4.dp))
-                                    .border(1.dp, tagBorderColor, RoundedCornerShape(4.dp))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                TvText(
-                                    text = aiSource.uppercase(),
-                                    fontSize = 12.sp,
-                                    color = tagTextColor,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .padding(start = 8.dp)
+                                        .background(tagBgColor, RoundedCornerShape(4.dp))
+                                        .border(1.dp, tagBorderColor, RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    TvText(
+                                        text = aiSource.uppercase(),
+                                        fontSize = 12.sp,
+                                        color = tagTextColor,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
                     }
@@ -569,7 +573,7 @@ private fun DictionaryDialog(
                             .handleDPadKeyEvents(
                                 onLeft = { pronunciationFocusRequester.tryRequestFocus() },
                                 onRight = { pronunciationFocusRequester.tryRequestFocus() },
-                                onDown = { groqFocusRequester.tryRequestFocus() },
+                                onDown = { mistralFocusRequester.tryRequestFocus() },
                                 onUp = onDismiss,
                                 onEnter = onToggleFavorite
                             )
@@ -596,7 +600,7 @@ private fun DictionaryDialog(
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val providers = listOf("groq", "ollama")
+                    val providers = listOf("mistral", "ollama")
                     providers.forEach { provider ->
                         val isSelected = selectedAiProvider == provider
                         val interactionSource = remember { MutableInteractionSource() }
@@ -613,7 +617,7 @@ private fun DictionaryDialog(
                         Box(
                             modifier = Modifier
                                 .padding(horizontal = 8.dp)
-                                .focusRequester(if (provider == "groq") groqFocusRequester else ollamaFocusRequester)
+                                .focusRequester(if (provider == "mistral") mistralFocusRequester else ollamaFocusRequester)
                                 .background(bgColor, RoundedCornerShape(20.dp))
                                 .border(
                                     width = 1.dp,
@@ -622,8 +626,8 @@ private fun DictionaryDialog(
                                 )
                                 .padding(horizontal = 12.dp, vertical = 4.dp)
                                 .handleDPadKeyEvents(
-                                    onLeft = { if (provider == "ollama") groqFocusRequester.tryRequestFocus() },
-                                    onRight = { if (provider == "groq") ollamaFocusRequester.tryRequestFocus() },
+                                    onLeft = { if (provider == "ollama") mistralFocusRequester.tryRequestFocus() },
+                                    onRight = { if (provider == "mistral") ollamaFocusRequester.tryRequestFocus() },
                                     onUp = { favoriteFocusRequester.tryRequestFocus() },
                                     onEnter = { onSelectAiProvider(provider) }
                                 )
@@ -644,19 +648,6 @@ private fun DictionaryDialog(
                     }
                 }
 
-                // POS chip (only show if entry is available)
-                entry?.let { e ->
-                    val posText = e.definitions.firstOrNull()?.partOfSpeech ?: ""
-                    Box(
-                        modifier = Modifier
-                            .padding(top = 6.dp, bottom = 8.dp)
-                            .background(Color(0xFF3A4A55), RoundedCornerShape(50))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        TvText(text = posText.ifEmpty { "词性" }, color = Color(0xFFF2F6FA), fontSize = 18.sp)
-                    }
-                }
-
                 // Content
                 when {
                     isLoading -> {
@@ -671,36 +662,77 @@ private fun DictionaryDialog(
                     }
                     entry != null -> {
                         Column(modifier = Modifier.fillMaxWidth()) {
-                            // Morphology section (Word Root) - Simplified like Web
-                            if (!entry.morphology.isNullOrBlank()) {
-                                // Handle multi-line morphology (word root breakdown) with consistent spacing
-                                entry.morphology.split("\n").forEach { line ->
+                            entry.definitions.forEachIndexed { index, definition ->
+                                // POS tag + Pronunciation on same line (matching Web layout)
+                                val posText = definition.partOfSpeech
+                                if (!posText.isNullOrBlank() || (index == 0 && !entry.pronunciation.isNullOrBlank())) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(top = if (index == 0) 6.dp else 12.dp, bottom = 8.dp)
+                                    ) {
+                                        if (!posText.isNullOrBlank()) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .background(Color(0xFF3A4A55), RoundedCornerShape(50))
+                                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                            ) {
+                                                TvText(text = posText, color = Color(0xFFF2F6FA), fontSize = 18.sp)
+                                            }
+                                        }
+                                        if (index == 0) {
+                                            entry.pronunciation?.let { phonetic ->
+                                                if (phonetic.isNotBlank()) {
+                                                    TvText(
+                                                        text = "  [$phonetic]",
+                                                        fontSize = 18.sp,
+                                                        color = Color(0xFFF2F6FA).copy(alpha = 0.6f),
+                                                        fontWeight = FontWeight.Normal,
+                                                        modifier = Modifier.padding(start = 8.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Morphology below POS line (like Web)
+                                if (index == 0 && !entry.morphology.isNullOrBlank()) {
+                                    entry.morphology.split("\n").forEach { line ->
+                                        if (line.isNotBlank()) {
+                                            TvText(
+                                                text = line.trim(),
+                                                color = Color(0xFFF2F6FA).copy(alpha = 0.9f),
+                                                fontSize = 28.sp,
+                                                lineHeight = 34.sp
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Meaning split by newlines (like Web)
+                                definition.meaning.split("\n").forEach { line ->
                                     if (line.isNotBlank()) {
                                         TvText(
                                             text = line.trim(),
-                                            color = Color(0xFFF2F6FA).copy(alpha = 0.9f),
+                                            color = Color(0xFFF2F6FA),
                                             fontSize = 28.sp,
                                             lineHeight = 34.sp
                                         )
                                     }
                                 }
-                            }
 
-                            entry.definitions.forEach { definition ->
-                                TvText(
-                                    text = definition.meaning,
-                                    color = Color(0xFFF2F6FA),
-                                    fontSize = 28.sp,
-                                    lineHeight = 34.sp
-                                )
-                                definition.examples.takeIf { it.isNotEmpty() }?.forEach { example ->
-                                    TvText(
-                                        text = example,
-                                        color = Color(0xFFB9C7D3),
-                                        fontSize = 20.sp,
-                                        lineHeight = 26.sp,
-                                        modifier = Modifier.padding(start = 6.dp, bottom = 4.dp, top = 2.dp)
-                                    )
+                                // Examples (like Web)
+                                if (definition.examples.isNotEmpty()) {
+                                    definition.examples.forEach { example ->
+                                        if (example.isNotBlank()) {
+                                            TvText(
+                                                text = example.trim(),
+                                                color = Color(0xFFF2F6FA).copy(alpha = 0.8f),
+                                                fontSize = 28.sp,
+                                                lineHeight = 34.sp
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

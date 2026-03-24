@@ -79,7 +79,13 @@ enum class DeviceType {
 val LocalDeviceType = compositionLocalOf { if (detectTvDevice) DeviceType.TV else DeviceType.TOUCH }
 
 fun Modifier.enableMarquee(focused: Boolean) =
-    if (focused) {
+    // On SDK <= 23, basicMarquee creates offscreen hardware layers (CompositingStrategy.Offscreen)
+    // sized to the full text width. On GPUs with max texture size 4096px (e.g. MiBOX4),
+    // these layers can exceed the limit, causing IllegalStateException:
+    // "Unable to create layer for Compose". Skip marquee on old SDKs; text will truncate instead.
+    if (android.os.Build.VERSION.SDK_INT <= 23) {
+        this
+    } else if (focused) {
         basicMarquee(initialDelayMillis = 250, animationMode = MarqueeAnimationMode.Immediately, velocity = 40.dp)
     } else {
         basicMarquee(animationMode = MarqueeAnimationMode.WhileFocused)
