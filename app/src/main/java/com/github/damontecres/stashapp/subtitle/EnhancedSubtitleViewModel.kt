@@ -80,6 +80,9 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
     private val _selectedAiProvider = MutableStateFlow("mistral")
     val selectedAiProvider: StateFlow<String> = _selectedAiProvider.asStateFlow()
     
+    private val _targetLanguage = MutableStateFlow("zh")
+    val targetLanguage: StateFlow<String> = _targetLanguage.asStateFlow()
+    
     // Track if currently auto-paused
     private val _isAutoPaused = MutableStateFlow(false)
     val isAutoPaused: StateFlow<Boolean> = _isAutoPaused.asStateFlow()
@@ -146,6 +149,7 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
         _subtitlePosition.value = prefs.getFloat("position", 0f)
         _autoPauseEnabled.value = prefs.getBoolean("autoPause", false)
         _selectedAiProvider.value = prefs.getString("aiProvider", "mistral") ?: "mistral"
+        _targetLanguage.value = prefs.getString("targetLanguage", "zh") ?: "zh"
     }
     
     private fun savePreferences() {
@@ -155,6 +159,7 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
             .putFloat("position", _subtitlePosition.value)
             .putBoolean("autoPause", _autoPauseEnabled.value)
             .putString("aiProvider", _selectedAiProvider.value)
+            .putString("targetLanguage", _targetLanguage.value)
             .apply()
     }
     
@@ -251,6 +256,21 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
     }
     
     /**
+     * Set target language for dictionary definitions (en/zh toggle)
+     */
+    fun setTargetLanguage(language: String) {
+        if (_targetLanguage.value != language) {
+            _targetLanguage.value = language
+            savePreferences()
+            
+            // If a word is currently selected, re-fetch with new language
+            _selectedWord.value?.let { word ->
+                selectWord(word)
+            }
+        }
+    }
+    
+    /**
      * Handle word click/selection
      */
     fun selectWord(word: String?) {
@@ -270,6 +290,7 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
             
             val context = _currentCue.value?.text ?: ""
             val language = _detectedLanguage.value
+            val targetLang = _targetLanguage.value
             val provider = _selectedAiProvider.value
             
             // Preload pronunciation audio file in background when dictionary dialog opens
@@ -282,7 +303,7 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
                 }
             }
             
-            val entry = dictionaryService?.lookup(word, language, context, provider)
+            val entry = dictionaryService?.lookup(word, targetLang, context, provider)
             _dictionaryEntry.value = entry
             _isLoadingDictionary.value = false
             Log.d(TAG, "selectWord: lookup completed, entry=${entry != null}, isLoading=false")

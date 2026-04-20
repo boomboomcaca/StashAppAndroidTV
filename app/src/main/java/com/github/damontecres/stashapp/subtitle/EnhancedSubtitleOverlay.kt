@@ -197,6 +197,7 @@ fun EnhancedSubtitleOverlay(
         
         // Dictionary dialog
         val selectedAiProvider by viewModel.selectedAiProvider.collectAsState()
+        val targetLanguage by viewModel.targetLanguage.collectAsState()
         
         selectedWord?.let { word ->
             DictionaryDialog(
@@ -206,10 +207,12 @@ fun EnhancedSubtitleOverlay(
                 detectedLanguage = detectedLanguage,
                 isFavorite = favorites.any { it.word == word && it.language == detectedLanguage },
                 selectedAiProvider = selectedAiProvider,
+                targetLanguage = targetLanguage,
                 onDismiss = { viewModel.selectWord(null) },
                 onPlayPronunciation = { viewModel.playPronunciation(word) },
                 onToggleFavorite = { viewModel.toggleFavorite(word) },
-                onSelectAiProvider = { viewModel.setAiProvider(it) }
+                onSelectAiProvider = { viewModel.setAiProvider(it) },
+                onSelectTargetLanguage = { viewModel.setTargetLanguage(it) }
             )
         }
         
@@ -429,15 +432,18 @@ private fun DictionaryDialog(
     detectedLanguage: String,
     isFavorite: Boolean,
     selectedAiProvider: String,
+    targetLanguage: String,
     onDismiss: () -> Unit,
     onPlayPronunciation: () -> Unit,
     onToggleFavorite: () -> Unit,
-    onSelectAiProvider: (String) -> Unit
+    onSelectAiProvider: (String) -> Unit,
+    onSelectTargetLanguage: (String) -> Unit
 ) {
     val favoriteFocusRequester = remember { FocusRequester() }
     val pronunciationFocusRequester = remember { FocusRequester() }
     val mistralFocusRequester = remember { FocusRequester() }
     val ollamaFocusRequester = remember { FocusRequester() }
+    val languageFocusRequester = remember { FocusRequester() }
     
     Dialog(
         onDismissRequest = onDismiss,
@@ -627,7 +633,7 @@ private fun DictionaryDialog(
                                 .padding(horizontal = 12.dp, vertical = 4.dp)
                                 .handleDPadKeyEvents(
                                     onLeft = { if (provider == "ollama") mistralFocusRequester.tryRequestFocus() },
-                                    onRight = { if (provider == "mistral") ollamaFocusRequester.tryRequestFocus() },
+                                    onRight = { if (provider == "mistral") ollamaFocusRequester.tryRequestFocus() else languageFocusRequester.tryRequestFocus() },
                                     onUp = { favoriteFocusRequester.tryRequestFocus() },
                                     onEnter = { onSelectAiProvider(provider) }
                                 )
@@ -645,6 +651,54 @@ private fun DictionaryDialog(
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                             )
                         }
+                    }
+                    
+                    // Language toggle button (EN/中)
+                    val langInteractionSource = remember { MutableInteractionSource() }
+                    val isLangFocused by langInteractionSource.collectIsFocusedAsState()
+                    
+                    val langBgColor = when {
+                        isLangFocused -> Color(0xFF4A90E2).copy(alpha = 0.8f)
+                        else -> Color.Transparent
+                    }
+                    
+                    val langTextColor = if (isLangFocused) Color.White else Color.Gray
+                    
+                    Box(
+                        modifier = Modifier
+                            .padding(start = 16.dp)
+                            .focusRequester(languageFocusRequester)
+                            .background(langBgColor, RoundedCornerShape(20.dp))
+                            .border(
+                                width = 1.dp,
+                                color = Color(0xFF4DA3FF),
+                                shape = RoundedCornerShape(20.dp)
+                            )
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                            .handleDPadKeyEvents(
+                                onLeft = { ollamaFocusRequester.tryRequestFocus() },
+                                onUp = { favoriteFocusRequester.tryRequestFocus() },
+                                onEnter = {
+                                    val nextLang = if (targetLanguage == "en") "zh" else "en"
+                                    onSelectTargetLanguage(nextLang)
+                                }
+                            )
+                            .focusable(interactionSource = langInteractionSource)
+                            .clickable(
+                                interactionSource = langInteractionSource,
+                                indication = null,
+                                onClick = {
+                                    val nextLang = if (targetLanguage == "en") "zh" else "en"
+                                    onSelectTargetLanguage(nextLang)
+                                }
+                            )
+                    ) {
+                        TvText(
+                            text = if (targetLanguage == "en") "EN" else "中",
+                            fontSize = 14.sp,
+                            color = langTextColor,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
 
