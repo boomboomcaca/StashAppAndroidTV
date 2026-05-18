@@ -15,7 +15,7 @@ import com.github.damontecres.stashapp.api.fragment.StashData
 import com.github.damontecres.stashapp.api.fragment.StudioData
 import com.github.damontecres.stashapp.api.fragment.TagData
 import com.github.damontecres.stashapp.api.type.CircumcisionCriterionInput
-import com.github.damontecres.stashapp.api.type.CircumisedEnum
+import com.github.damontecres.stashapp.api.type.CircumcisedEnum
 import com.github.damontecres.stashapp.api.type.CriterionModifier
 import com.github.damontecres.stashapp.api.type.DateCriterionInput
 import com.github.damontecres.stashapp.api.type.FloatCriterionInput
@@ -440,9 +440,9 @@ fun filterSummary(f: CircumcisionCriterionInput): String {
     val strings =
         f.value.getOrNull().orEmpty().map {
             when (it) {
-                CircumisedEnum.CUT -> context.getString(R.string.stashapp_circumcised_types_CUT)
-                CircumisedEnum.UNCUT -> context.getString(R.string.stashapp_circumcised_types_UNCUT)
-                CircumisedEnum.UNKNOWN__ -> "Unknown"
+                CircumcisedEnum.CUT -> context.getString(R.string.stashapp_circumcised_types_CUT)
+                CircumcisedEnum.UNCUT -> context.getString(R.string.stashapp_circumcised_types_UNCUT)
+                CircumcisedEnum.UNKNOWN__ -> "Unknown"
             }
         }
     return when (f.modifier) {
