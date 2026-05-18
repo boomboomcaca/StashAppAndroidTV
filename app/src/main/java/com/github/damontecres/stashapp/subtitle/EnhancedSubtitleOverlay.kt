@@ -326,29 +326,113 @@ private fun EnhancedSubtitleText(
                     )
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
-                if (wordSegments.isEmpty()) {
-                    // Fallback: display plain text
+                BilingualSubtitleLines(
+                    text = cue.text,
+                    wordSegments = wordSegments,
+                    selectedWordIndex = selectedWordIndex,
+                    fontSize = fontSize,
+                    isFavorite = isWordFavorite
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Detect the language of a single line by CJK character ratio.
+ * Returns "zh" if more than 30% of non-space characters are CJK ideographs,
+ * otherwise "en".
+ */
+private fun detectLineLang(text: String): String {
+    val cleaned = text.replace(Regex("\\s"), "")
+    if (cleaned.isEmpty()) return "en"
+    val cjkCount = Regex("[\u4e00-\u9fff\u3400-\u4dbf]").findAll(cleaned).count()
+    return if (cjkCount.toFloat() / cleaned.length > 0.3f) "zh" else "en"
+}
+
+/**
+ * Render bilingual subtitle text line-by-line with per-line language styling.
+ * - English lines: yellow with clickable word segments (existing behavior).
+ * - Chinese lines: light blue, smaller, plain text (no word selection).
+ */
+@Composable
+private fun BilingualSubtitleLines(
+    text: String,
+    wordSegments: List<WordSegment>,
+    selectedWordIndex: Int,
+    fontSize: Float,
+    isFavorite: (String) -> Boolean
+) {
+    val lines = text.split("\n")
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        var pos = 0
+        lines.forEach { line ->
+            val lineStart = pos
+            val lineEnd = pos + line.length
+            val lang = detectLineLang(line)
+
+            if (lang == "zh") {
+                // Chinese auxiliary line: plain text, light blue, smaller
+                Text(
+                    text = line,
+                    color = Color(0xFFB8D4F0),
+                    fontSize = (fontSize * 32 * 0.78f).sp,
+                    fontWeight = FontWeight.Normal,
+                    lineHeight = (fontSize * 40 * 0.78f).sp,
+                    textAlign = TextAlign.Center
+                )
+            } else {
+                // English target line: yellow with word segments
+                val lineSegments = mutableListOf<WordSegment>()
+                var localSelectedIdx = -1
+                wordSegments.forEachIndexed { gIdx, seg ->
+                    if (seg.startIndex >= lineStart && seg.endIndex <= lineEnd) {
+                        if (gIdx == selectedWordIndex) {
+                            localSelectedIdx = lineSegments.size
+                        }
+                        lineSegments.add(
+                            WordSegment(
+                                word = seg.word,
+                                startIndex = seg.startIndex - lineStart,
+                                endIndex = seg.endIndex - lineStart,
+                                isSelected = seg.isSelected
+                            )
+                        )
+                    }
+                }
+
+                if (lineSegments.isEmpty()) {
                     Text(
-                        text = cue.text,
+                        text = line,
                         color = Color.Yellow,
                         fontSize = (fontSize * 32).sp,
                         fontWeight = FontWeight.Normal,
-                        textAlign = TextAlign.Center,
-                        lineHeight = (fontSize * 40).sp
+                        lineHeight = (fontSize * 40).sp,
+                        textAlign = TextAlign.Center
                     )
                 } else {
-                    // Display segmented text with clickable words
-                    SubtitleWords(
-                        text = cue.text,
-                        segments = wordSegments,
-                        selectedIndex = selectedWordIndex,
-                        fontSize = fontSize,
-                        detectedLanguage = detectedLanguage,
-                        isFavorite = isWordFavorite,
-                        onWordClick = onWordClick
+                    Text(
+                        text = buildAnnotatedStringWithWords(
+                            text = line,
+                            segments = lineSegments,
+                            selectedIndex = localSelectedIdx,
+                            fontSize = fontSize,
+                            isFavorite = isFavorite
+                        ),
+                        fontSize = (fontSize * 32).sp,
+                        color = Color.Yellow,
+                        fontWeight = FontWeight.Normal,
+                        lineHeight = (fontSize * 40).sp,
+                        textAlign = TextAlign.Center
                     )
                 }
             }
+
+            pos += line.length + 1 // +1 for the consumed "\n"
         }
     }
 }

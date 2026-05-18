@@ -142,11 +142,29 @@ class WordSegmenter(
     
     companion object {
         /**
-         * Detect language from text
+         * Detect language from text.
+         *
+         * For bilingual subtitles (e.g. English + Chinese in the same cue) we
+         * prefer the Latin language so that word segmentation/selection still
+         * works on the English line. The Chinese line is rendered separately
+         * as plain text by the overlay UI.
          */
         fun detectLanguage(text: String): String {
+            val hasCjk = Regex("""[\u4e00-\u9fff]""").containsMatchIn(text)
+            val hasLatin = Regex("""[A-Za-z]""").containsMatchIn(text)
+
+            // Bilingual: pick the Latin language so segmentLatin runs on the cue.
+            if (hasCjk && hasLatin) {
+                return when {
+                    Regex("""[àáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ]""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "fr"
+                    Regex("""[äöüß]""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "de"
+                    Regex("""[ñ¿¡]""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "es"
+                    else -> "en"
+                }
+            }
+
             return when {
-                Regex("""[\u4e00-\u9fff]""").containsMatchIn(text) -> "zh"
+                hasCjk -> "zh"
                 Regex("""[\u3040-\u309f\u30a0-\u30ff]""").containsMatchIn(text) -> "ja"
                 Regex("""[\uac00-\ud7af]""").containsMatchIn(text) -> "ko"
                 Regex("""[а-яё]""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "ru"
