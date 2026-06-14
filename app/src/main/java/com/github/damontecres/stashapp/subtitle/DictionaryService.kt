@@ -1,6 +1,7 @@
 package com.github.damontecres.stashapp.subtitle
 
 import android.util.Log
+import android.util.LruCache
 import com.apollographql.apollo.ApolloClient
 import com.apollographql.apollo.api.Optional
 import com.github.damontecres.stashapp.api.OllamaExplainWordMutation
@@ -14,8 +15,8 @@ import kotlinx.coroutines.withContext
 class DictionaryService(
     private val apolloClient: ApolloClient?
 ) {
-    private val cache = mutableMapOf<String, DictionaryEntry>()
-    private val MAX_CACHE_SIZE = 100
+    // Thread-safe (LruCache get/put are synchronized) — lookups run concurrently on Dispatchers.IO.
+    private val cache = LruCache<String, DictionaryEntry>(MAX_CACHE_SIZE)
     
     /**
      * Look up a word in the dictionary
@@ -34,7 +35,7 @@ class DictionaryService(
             }
             
             // Check cache first
-            cache[cacheKey]?.let { return@withContext it }
+            cache.get(cacheKey)?.let { return@withContext it }
             
             try {
                 if (apolloClient == null) {
@@ -70,15 +71,9 @@ class DictionaryService(
                         aiSource = response.aiSource
                     )
                     
-                    // Cache the entry with size limit
-                    if (cache.size >= MAX_CACHE_SIZE) {
-                        val firstKey = cache.keys.firstOrNull()
-                        if (firstKey != null) {
-                            cache.remove(firstKey)
-                        }
-                    }
-                    cache[cacheKey] = entry
-                    
+                    // Cache the entry (LruCache evicts the least-recently-used automatically)
+                    cache.put(cacheKey, entry)
+
                     Log.d(TAG, "Dictionary lookup successful for word: $word")
                     return@withContext entry
                 } else {
@@ -122,16 +117,17 @@ class DictionaryService(
      * Clear cache
      */
     fun clearCache() {
-        cache.clear()
+        cache.evictAll()
     }
-    
+
     /**
      * Get cache size
      */
-    fun getCacheSize(): Int = cache.size
-    
+    fun getCacheSize(): Int = cache.size()
+
     companion object {
         private const val TAG = "DictionaryService"
+        private const val MAX_CACHE_SIZE = 100
     }
 }
 

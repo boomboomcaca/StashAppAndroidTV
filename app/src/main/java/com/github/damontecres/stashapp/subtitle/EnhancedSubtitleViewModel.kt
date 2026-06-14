@@ -10,9 +10,11 @@ import com.apollographql.apollo.ApolloClient
 import com.github.damontecres.stashapp.util.StashClient
 import com.github.damontecres.stashapp.util.StashServer
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -27,6 +29,11 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
     private var pronunciationService: PronunciationService? = null
     private var favoritesService: FavoritesService? = null
     private var apiKey: String? = null
+    private var serverUrl: String? = null
+
+    // In-flight jobs so they can be cancelled/superseded
+    private var lookupJob: Job? = null
+    private var segmentJob: Job? = null
     
     // Subtitle state
     private val _subtitles = MutableStateFlow<List<SubtitleCue>>(emptyList())
@@ -98,7 +105,6 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
     private val _isInWordNavigationMode = MutableStateFlow(false)
     val isInWordNavigationMode: StateFlow<Boolean> = _isInWordNavigationMode.asStateFlow()
     
-    private var segmenter: WordSegmenter? = null
     private var subtitleCache = mutableMapOf<String, List<SubtitleCue>>()
     
     private val prefs: SharedPreferences = context.getSharedPreferences(
@@ -129,27 +135,35 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
     }
     
     fun setServer(server: StashServer?) {
-        viewModelScope.launch {
-            apiKey = server?.apiKey
-            apolloClient = try {
-                server?.apolloClient
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to get apollo client", e)
-                null
-            }
-            dictionaryService = DictionaryService(apolloClient)
-            // Set server for pronunciation service
-            pronunciationService?.setServer(server)
+        // Set synchronously so a subtitle load / word lookup triggered right after
+        // this call cannot race ahead of an unset apiKey/dictionaryService.
+        serverUrl = server?.url
+        apiKey = server?.apiKey
+        apolloClient = try {
+            server?.apolloClient
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to get apollo client", e)
+            null
         }
+        dictionaryService = DictionaryService(apolloClient)
+        // Set server for pronunciation service
+        pronunciationService?.setServer(server)
     }
     
     private fun loadPreferences() {
-        _isEnabled.value = prefs.getBoolean("enabled", false)
-        _fontSize.value = prefs.getFloat("fontSize", 1.0f)
-        _subtitlePosition.value = prefs.getFloat("position", 0f)
-        _autoPauseEnabled.value = prefs.getBoolean("autoPause", false)
-        _selectedAiProvider.value = prefs.getString("aiProvider", "mistral") ?: "mistral"
-        _targetLanguage.value = prefs.getString("targetLanguage", "zh") ?: "zh"
+        try {
+            _isEnabled.value = prefs.getBoolean("enabled", false)
+            _fontSize.value = prefs.getFloat("fontSize", 1.0f).coerceIn(0.5f, 3.0f)
+            _subtitlePosition.value = prefs.getFloat("position", 0f).coerceIn(-1f, 1f)
+            _autoPauseEnabled.value = prefs.getBoolean("autoPause", false)
+            val provider = prefs.getString("aiProvider", "mistral") ?: "mistral"
+            _selectedAiProvider.value = if (provider in VALID_PROVIDERS) provider else "mistral"
+            val lang = prefs.getString("targetLanguage", "zh") ?: "zh"
+            _targetLanguage.value = if (lang in VALID_TARGET_LANGUAGES) lang else "zh"
+        } catch (e: Exception) {
+            // Defend against type-mismatched legacy preference keys (ClassCastException)
+            Log.w(TAG, "Failed to load subtitle preferences, using defaults", e)
+        }
     }
     
     private fun savePreferences() {
@@ -188,8 +202,11 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
                 return@launch
             }
             
-            VttParser.loadVttFromUrl(vttUrl, apiKey).fold(
+            VttParser.loadVttFromUrl(vttUrl, apiKey, serverUrl).fold(
                 onSuccess = { cues ->
+                    if (subtitleCache.size >= MAX_SUBTITLE_CACHE) {
+                        subtitleCache.keys.firstOrNull()?.let { subtitleCache.remove(it) }
+                    }
                     subtitleCache[vttUrl] = cues
                     _subtitles.value = cues
                     _isLoadingSubtitles.value = false
@@ -227,17 +244,20 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
     }
     
     private fun segmentCueText(cue: SubtitleCue) {
-        val detected = WordSegmenter.detectLanguage(cue.text)
-        if (detected != _detectedLanguage.value) {
-            _detectedLanguage.value = detected
-            segmenter = WordSegmenter.create(detected)
+        // Run detection + segmentation off the main thread; only publish if this cue
+        // is still the current one (guards against a newer cue superseding it).
+        segmentJob?.cancel()
+        segmentJob = viewModelScope.launch {
+            val detected = WordSegmenter.detectLanguage(cue.text)
+            val segments = withContext(Dispatchers.Default) {
+                WordSegmenter.create(detected).segmentText(cue.text)
+            }
+            if (isActive && _currentCue.value == cue) {
+                _detectedLanguage.value = detected
+                _wordSegments.value = segments
+                _selectedWordIndex.value = -1
+            }
         }
-        
-        val currentSegmenter = segmenter ?: WordSegmenter.create(_detectedLanguage.value)
-        val segments = currentSegmenter.segmentText(cue.text)
-        
-        _wordSegments.value = segments
-        _selectedWordIndex.value = -1
     }
     
     /**
@@ -275,24 +295,22 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
      */
     fun selectWord(word: String?) {
         Log.d(TAG, "selectWord: word='$word', currentSelectedWord=${_selectedWord.value}")
-        viewModelScope.launch {
-            _selectedWord.value = word
-            Log.d(TAG, "selectWord: _selectedWord set to '$word'")
-            if (word == null) {
-                _dictionaryEntry.value = null
-                _isLoadingDictionary.value = false
-                Log.d(TAG, "selectWord: word is null, clearing dictionary")
-                return@launch
-            }
-            
-            _isLoadingDictionary.value = true
-            Log.d(TAG, "selectWord: looking up word='$word'")
-            
+        // Cancel any in-flight lookup so a slower previous request can't overwrite this one.
+        lookupJob?.cancel()
+        _selectedWord.value = word
+        if (word == null) {
+            _dictionaryEntry.value = null
+            _isLoadingDictionary.value = false
+            return
+        }
+
+        _isLoadingDictionary.value = true
+        lookupJob = viewModelScope.launch {
             val context = _currentCue.value?.text ?: ""
             val language = _detectedLanguage.value
             val targetLang = _targetLanguage.value
             val provider = _selectedAiProvider.value
-            
+
             // Preload pronunciation audio file in background when dictionary dialog opens
             pronunciationService?.let { service ->
                 launch {
@@ -302,11 +320,14 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
                         }
                 }
             }
-            
+
             val entry = dictionaryService?.lookup(word, targetLang, context, provider)
-            _dictionaryEntry.value = entry
-            _isLoadingDictionary.value = false
-            Log.d(TAG, "selectWord: lookup completed, entry=${entry != null}, isLoading=false")
+            // Only publish if this is still the selected word and we weren't cancelled.
+            if (isActive && _selectedWord.value == word) {
+                _dictionaryEntry.value = entry
+                _isLoadingDictionary.value = false
+                Log.d(TAG, "selectWord: lookup completed, entry=${entry != null}")
+            }
         }
     }
     
@@ -495,27 +516,22 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
         val cues = _subtitles.value
         if (cues.isEmpty()) return -1
 
-        var lastBefore = -1
-
-        // Find current cue or track the nearest previous cue
-        for (i in cues.indices) {
-            val cue = cues[i]
-            when {
-                currentTimeSeconds >= cue.startTime && currentTimeSeconds <= cue.endTime -> {
-                    return i
-                }
-                currentTimeSeconds > cue.endTime -> {
-                    lastBefore = i
-                }
-                currentTimeSeconds < cue.startTime -> {
-                    // Between cues: return the most recent previous cue (if any), otherwise the first
-                    return if (lastBefore >= 0) lastBefore else 0
-                }
+        // Cues are sorted by start time; binary search for the last cue that has
+        // started at/before the current time (the active cue, or the nearest previous
+        // one when between cues). Before the first cue, anchor to index 0.
+        var lo = 0
+        var hi = cues.size - 1
+        var candidate = -1
+        while (lo <= hi) {
+            val mid = (lo + hi) ushr 1
+            if (cues[mid].startTime <= currentTimeSeconds) {
+                candidate = mid
+                lo = mid + 1
+            } else {
+                hi = mid - 1
             }
         }
-
-        // Past all cues: return the last cue
-        return cues.size - 1
+        return if (candidate >= 0) candidate else 0
     }
     
     /**
@@ -640,11 +656,19 @@ class EnhancedSubtitleViewModel(application: Application) : AndroidViewModel(app
     
     override fun onCleared() {
         super.onCleared()
-        pronunciationService?.shutdown()
+        lookupJob?.cancel()
+        segmentJob?.cancel()
+        // PronunciationService is a process-wide singleton shared across screens, so
+        // do NOT shut it down here (that would wipe its cache/temp files for everyone).
+        // Just stop any audio this screen started playing.
+        pronunciationService?.stop()
     }
-    
+
     companion object {
         private const val TAG = "EnhancedSubtitleVM"
+        private const val MAX_SUBTITLE_CACHE = 20
+        private val VALID_PROVIDERS = setOf("mistral", "ollama")
+        private val VALID_TARGET_LANGUAGES = setOf("en", "zh")
     }
 }
 

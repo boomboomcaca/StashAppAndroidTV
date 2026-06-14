@@ -1,5 +1,8 @@
 package com.github.damontecres.stashapp.subtitle
 
+import java.text.BreakIterator
+import java.util.Locale
+
 /**
  * Word segmentation for different languages
  */
@@ -13,21 +16,27 @@ class WordSegmenter(
      */
     fun segmentText(text: String): List<WordSegment> {
         return when (language) {
-            "zh", "zh-CN", "zh-TW" -> segmentChinese(text)
-            "ja" -> segmentJapanese(text)
-            "ko" -> segmentKorean(text)
+            "zh", "zh-CN" -> segmentWithBreakIterator(text, Locale.CHINA)
+            "zh-TW" -> segmentWithBreakIterator(text, Locale.TAIWAN)
+            "ja" -> segmentWithBreakIterator(text, Locale.JAPANESE)
+            "ko" -> segmentWithBreakIterator(text, Locale.KOREAN)
             else -> segmentLatin(text)
         }
     }
-    
+
     /**
      * Latin-based languages (English, Spanish, French, etc.)
+     *
+     * Uses a Unicode-aware letter class so accented characters (é, ñ, ü, ß …) that
+     * [detectLanguage] explicitly routes here for fr/de/es are kept intact, and
+     * allows internal apostrophes (straight ' and typographic ’) and hyphens so
+     * contractions ("don't", "don’t") and compound words ("well-known") stay as a
+     * single selectable token.
      */
     private fun segmentLatin(text: String): List<WordSegment> {
         val segments = mutableListOf<WordSegment>()
-        val wordRegex = Regex("""\b\w+\b""")
-        
-        wordRegex.findAll(text).forEach { matchResult ->
+
+        LATIN_WORD_REGEX.findAll(text).forEach { matchResult ->
             val word = matchResult.value
             if (word.length >= minWordLength) {
                 segments.add(
@@ -39,11 +48,10 @@ class WordSegmenter(
                 )
             }
         }
-        
+
         // Add punctuation if enabled
         if (enablePunctuation) {
-            val punctRegex = Regex("""[.,;:!?'"()[\]{}]""")
-            punctRegex.findAll(text).forEach { matchResult ->
+            LATIN_PUNCT_REGEX.findAll(text).forEach { matchResult ->
                 segments.add(
                     WordSegment(
                         word = matchResult.value,
@@ -53,94 +61,58 @@ class WordSegmenter(
                 )
             }
         }
-        
+
         return segments.sortedBy { it.startIndex }
     }
-    
+
     /**
-     * Chinese segmentation (simplified approach - treats each character as a word)
+     * CJK / locale-aware segmentation using ICU's dictionary-backed [BreakIterator]
+     * (Chinese, Japanese, Korean). This groups multi-character words instead of
+     * emitting one segment per glyph, so dictionary lookups and word navigation
+     * operate on real words. The reported indices come straight from the iterator,
+     * so they always line up with the source text (no manual offset bookkeeping).
      */
-    private fun segmentChinese(text: String): List<WordSegment> {
+    private fun segmentWithBreakIterator(text: String, locale: Locale): List<WordSegment> {
+        if (text.isEmpty()) return emptyList()
+
         val segments = mutableListOf<WordSegment>()
-        
-        text.forEachIndexed { index, char ->
-            if (char.isWhitespace()) return@forEachIndexed
-            
-            val isPunctuation = Regex("""[，。！？；：""''（）【】《》]""").matches(char.toString())
-            if (isPunctuation && !enablePunctuation) return@forEachIndexed
-            
-            // Check if it's a Chinese character or punctuation
-            if (Regex("""[\u4e00-\u9fff]|[，。！？；：""''（）【】《》]""").matches(char.toString())) {
+        val iterator = BreakIterator.getWordInstance(locale)
+        iterator.setText(text)
+
+        var start = iterator.first()
+        var end = iterator.next()
+        while (end != BreakIterator.DONE) {
+            val word = text.substring(start, end)
+            val hasContent = word.any { it.isLetterOrDigit() }
+            if (word.isNotBlank() && (hasContent || enablePunctuation) && word.length >= minWordLength) {
                 segments.add(
                     WordSegment(
-                        word = char.toString(),
-                        startIndex = index,
-                        endIndex = index + 1
+                        word = word,
+                        startIndex = start,
+                        endIndex = end
                     )
                 )
             }
+            start = end
+            end = iterator.next()
         }
-        
+
         return segments
     }
-    
-    /**
-     * Japanese segmentation (simplified approach)
-     */
-    private fun segmentJapanese(text: String): List<WordSegment> {
-        val segments = mutableListOf<WordSegment>()
-        
-        text.forEachIndexed { index, char ->
-            if (char.isWhitespace()) return@forEachIndexed
-            
-            val isPunctuation = Regex("""[、。！？；：「」『』（）]""").matches(char.toString())
-            if (isPunctuation && !enablePunctuation) return@forEachIndexed
-            
-            // Check if it's a Japanese character
-            if (Regex("""[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff]|[、。！？；：「」『』（）]""").matches(char.toString())) {
-                segments.add(
-                    WordSegment(
-                        word = char.toString(),
-                        startIndex = index,
-                        endIndex = index + 1
-                    )
-                )
-            }
-        }
-        
-        return segments
-    }
-    
-    /**
-     * Korean segmentation (space-based)
-     */
-    private fun segmentKorean(text: String): List<WordSegment> {
-        val segments = mutableListOf<WordSegment>()
-        val words = text.split(Regex("""\s+"""))
-        var currentIndex = 0
-        
-        words.forEach { word ->
-            val trimmed = word.trim()
-            if (trimmed.isNotEmpty() && trimmed.length >= minWordLength) {
-                // Check if it contains Korean characters
-                if (Regex("""[\uac00-\ud7af]""").containsMatchIn(trimmed)) {
-                    val wordStartIndex = text.indexOf(trimmed, currentIndex)
-                    segments.add(
-                        WordSegment(
-                            word = trimmed,
-                            startIndex = wordStartIndex,
-                            endIndex = wordStartIndex + trimmed.length
-                        )
-                    )
-                }
-            }
-            currentIndex += word.length
-        }
-        
-        return segments
-    }
-    
+
     companion object {
+        /** Unicode letters, allowing internal apostrophes (straight/typographic) and hyphens. */
+        private val LATIN_WORD_REGEX = Regex("""\p{L}+(?:['’\-]\p{L}+)*""")
+        private val LATIN_PUNCT_REGEX = Regex("""[.,;:!?'"()\[\]{}]""")
+        private val CJK_REGEX = Regex("""[一-鿿]""")
+        private val LATIN_LETTER_REGEX = Regex("""[A-Za-z]""")
+        private val KANA_REGEX = Regex("""[぀-ゟ゠-ヿ]""")
+        private val HANGUL_REGEX = Regex("""[가-힯]""")
+        private val CYRILLIC_REGEX = Regex("""[а-яё]""", RegexOption.IGNORE_CASE)
+        private val FRENCH_REGEX = Regex("""[àáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ]""", RegexOption.IGNORE_CASE)
+        private val GERMAN_REGEX = Regex("""[äöüß]""", RegexOption.IGNORE_CASE)
+        private val SPANISH_REGEX = Regex("""[ñ¿¡]""", RegexOption.IGNORE_CASE)
+
         /**
          * Detect language from text.
          *
@@ -150,31 +122,31 @@ class WordSegmenter(
          * as plain text by the overlay UI.
          */
         fun detectLanguage(text: String): String {
-            val hasCjk = Regex("""[\u4e00-\u9fff]""").containsMatchIn(text)
-            val hasLatin = Regex("""[A-Za-z]""").containsMatchIn(text)
+            val hasCjk = CJK_REGEX.containsMatchIn(text)
+            val hasLatin = LATIN_LETTER_REGEX.containsMatchIn(text)
 
             // Bilingual: pick the Latin language so segmentLatin runs on the cue.
             if (hasCjk && hasLatin) {
                 return when {
-                    Regex("""[àáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ]""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "fr"
-                    Regex("""[äöüß]""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "de"
-                    Regex("""[ñ¿¡]""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "es"
+                    FRENCH_REGEX.containsMatchIn(text) -> "fr"
+                    GERMAN_REGEX.containsMatchIn(text) -> "de"
+                    SPANISH_REGEX.containsMatchIn(text) -> "es"
                     else -> "en"
                 }
             }
 
             return when {
                 hasCjk -> "zh"
-                Regex("""[\u3040-\u309f\u30a0-\u30ff]""").containsMatchIn(text) -> "ja"
-                Regex("""[\uac00-\ud7af]""").containsMatchIn(text) -> "ko"
-                Regex("""[а-яё]""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "ru"
-                Regex("""[àáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ]""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "fr"
-                Regex("""[äöüß]""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "de"
-                Regex("""[ñ¿¡]""", RegexOption.IGNORE_CASE).containsMatchIn(text) -> "es"
+                KANA_REGEX.containsMatchIn(text) -> "ja"
+                HANGUL_REGEX.containsMatchIn(text) -> "ko"
+                CYRILLIC_REGEX.containsMatchIn(text) -> "ru"
+                FRENCH_REGEX.containsMatchIn(text) -> "fr"
+                GERMAN_REGEX.containsMatchIn(text) -> "de"
+                SPANISH_REGEX.containsMatchIn(text) -> "es"
                 else -> "en"
             }
         }
-        
+
         /**
          * Create a segmenter with default options
          */
@@ -187,4 +159,3 @@ class WordSegmenter(
         }
     }
 }
-
